@@ -346,6 +346,9 @@ svg.lucide { display:block; stroke-width:1.75; }
 .commit-result  { font-size:12px; margin-top:8px; padding:6px 10px; border-radius:5px; background:var(--surface); overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; }
 .commit-result.ok  { color:#9ece6a; border:1px solid rgba(158,206,106,.3); }
 .commit-result.err { color:#f7768e; border:1px solid rgba(247,118,142,.3); }
+.msg.tool-status { margin:2px 0; }
+.tool-line { font-size:12px; color:var(--dim); padding:3px 8px; background:var(--surface); border-radius:6px; display:inline-block; max-width:92%; overflow-wrap:break-word; word-break:break-word; }
+.tool-line.err { color:#f7768e; }
 /* Action card accent colors per type */
 .action-card-slack    { border-color:#e01e5a; } .action-card-slack    .commit-card-title { color:#e01e5a; } .action-card-slack    .commit-approve { background:#e01e5a; }
 .action-card-gmail    { border-color:#ea4335; } .action-card-gmail    .commit-card-title { color:#ea4335; } .action-card-gmail    .commit-approve { background:#ea4335; }
@@ -788,6 +791,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.atlas.onToggleFind(()       => findOpen ? closeFind() : openFind());
   window.atlas.onFocusUrl(()         => { const u = document.getElementById('url'); u.focus(); u.select(); });
   window.atlas.onToggleDownloads(()  => dlsOpen ? hideDls() : showDls());
+  window.atlas.onChatEvent(handleChatEvent);
 
   // Atlas text actions from right-click context menu
   window.atlas.onHistoryInit(items => { items.forEach(h => tabHistory.set(h.url, h)); });
@@ -1254,21 +1258,131 @@ function mergeRoles(messages) {
   return merged;
 }
 
+// ── Native tool-use streaming chat engine (ported from ForgeOS "Frank") ───────
+let chatStreamState = null;
+
+function ensureLiveBubble() {
+  hideTyping();
+  const box = document.getElementById('msgs');
+  if (!chatStreamState.liveEl) {
+    document.getElementById('empty')?.remove();
+    const el = document.createElement('div'); el.className = 'msg assistant';
+    el.innerHTML = `<div class="mlabel">Claude</div><div class="bubble"></div>`;
+    box.appendChild(el);
+    chatStreamState.liveEl = el;
+    chatStreamState.liveText = '';
+  }
+  return chatStreamState.liveEl;
+}
+
+function finalizeLiveBubble() {
+  if (chatStreamState && chatStreamState.liveEl) {
+    const t = (chatStreamState.liveText || '').trim();
+    if (t) chatHistory.push({ role: 'assistant', content: t });
+    chatStreamState.liveEl = null;
+    chatStreamState.liveText = '';
+  }
+}
+
+function handleChatEvent(ev) {
+  if (!chatStreamState) return;
+  const box = document.getElementById('msgs');
+  switch (ev.type) {
+    case 'chunk': {
+      const el = ensureLiveBubble();
+      chatStreamState.liveText += ev.text;
+      el.querySelector('.bubble').innerHTML = md(chatStreamState.liveText);
+      box.scrollTop = box.scrollHeight;
+      break;
+    }
+    case 'round_break':
+      finalizeLiveBubble();
+      break;
+    case 'tool_start': {
+      hideTyping();
+      const el = document.createElement('div'); el.className = 'msg tool-status';
+      el.innerHTML = `<div class="tool-line"><span class="spinner"></span> ${esc(ev.tool)}…</div>`;
+      box.appendChild(el); box.scrollTop = box.scrollHeight;
+      chatStreamState.lastToolEl = el;
+      break;
+    }
+    case 'tool_done':
+      if (chatStreamState.lastToolEl) chatStreamState.lastToolEl.innerHTML =
+        `<div class="tool-line">${ev.cancelled ? '✗' : '✓'} ${esc(ev.tool)}${ev.result ? ' — ' + esc(ev.result) : ''}</div>`;
+      break;
+    case 'tool_error':
+      if (chatStreamState.lastToolEl) chatStreamState.lastToolEl.innerHTML =
+        `<div class="tool-line err">✗ ${esc(ev.tool)} — ${esc(ev.error || '')}</div>`;
+      break;
+    case 'approval': {
+      finalizeLiveBubble(); hideTyping();
+      const action = { type: ev.tool, ...ev.input };
+      const el = document.createElement('div'); el.className = 'msg assistant';
+      el.innerHTML = buildActionCardHTML(action, ev.approvalId);
+      box.appendChild(el); box.scrollTop = box.scrollHeight;
+      lucide.createIcons();
+      break;
+    }
+    case 'done':
+      finalizeLiveBubble(); hideTyping();
+      chatStreamState = null;
+      document.getElementById('send-btn').disabled = false;
+      autoSaveConv();
+      break;
+    case 'error':
+      finalizeLiveBubble(); hideTyping();
+      addMsg('assistant', 'Error: ' + (ev.error || 'something went wrong'));
+      chatStreamState = null;
+      document.getElementById('send-btn').disabled = false;
+      break;
+  }
+}
+
+function approveStreamAction(approvalId) {
+  const card = document.getElementById(approvalId);
+  const btns = card?.querySelector('.commit-card-btns');
+  if (btns) btns.innerHTML = '<div class="commit-result ok">Approved — executing…</div>';
+  window.atlas.chatApprove(approvalId, 'approved');
+}
+function approveAllStream(approvalId) {
+  const card = document.getElementById(approvalId);
+  const btns = card?.querySelector('.commit-card-btns');
+  if (btns) btns.innerHTML = '<div class="commit-result ok">Approved — auto-approving the rest of this turn…</div>';
+  window.atlas.chatApprove(approvalId, 'approve_all');
+}
+function cancelStreamAction(approvalId) {
+  const card = document.getElementById(approvalId);
+  const btns = card?.querySelector('.commit-card-btns');
+  if (btns) btns.innerHTML = '<div class="commit-result">Cancelled</div>';
+  window.atlas.chatApprove(approvalId, 'cancelled');
+}
+
 async function send() {
   if (!apiKey) { alert('Add your API key first.'); return; }
+  if (chatStreamState) return; // a turn is already in flight
   const inp = document.getElementById('chat-in');
   const txt = inp.value.trim(); if (!txt) return;
   inp.value = ''; grow(inp);
   addMsg('user', txt); showTyping();
   document.getElementById('send-btn').disabled = true;
+  chatStreamState = { liveEl: null, liveText: '', lastToolEl: null };
   try {
     const history = mergeRoles(chatHistory.slice(-20));
-    const reply = await window.atlas.chat(history, apiKey, activeProjectId);
-    hideTyping(); addMsg('assistant', reply);
-    await autoSaveConv();
+    const res = await window.atlas.chatStream(history, apiKey, activeProjectId);
+    // UI is driven by chat-event messages; this only catches the early-return
+    // error path (e.g. no API key) that resolves without emitting events.
+    if (res && res.ok === false && chatStreamState) {
+      finalizeLiveBubble(); hideTyping();
+      addMsg('assistant', 'Error: ' + (res.error || 'failed'));
+      chatStreamState = null;
+      document.getElementById('send-btn').disabled = false;
+    }
   } catch (e) {
-    hideTyping(); addMsg('assistant', 'Error: ' + (e.message || 'something went wrong'));
-  } finally { document.getElementById('send-btn').disabled = false; }
+    finalizeLiveBubble(); hideTyping();
+    addMsg('assistant', 'Error: ' + (e.message || 'something went wrong'));
+    chatStreamState = null;
+    document.getElementById('send-btn').disabled = false;
+  }
 }
 function chatKey(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
 
@@ -2010,9 +2124,9 @@ function buildActionCardHTML(action, cardId) {
     <div class="commit-card-title"><i data-lucide="${meta.icon}"></i> ${esc(meta.label)}</div>
     ${details}
     <div class="commit-card-btns">
-      <button class="commit-approve" onclick="approveAction('${cardId}')">Approve</button>
-      <button class="commit-cancel"  onclick="cancelAction('${cardId}')">Cancel</button>
-      ${SAFE_ACTION_TYPES.has(action.type) ? `<button class="commit-approve-all" onclick="approveAllReads('${cardId}')">Approve All Reads</button>` : ''}
+      <button class="commit-approve" onclick="approveStreamAction('${cardId}')">Approve</button>
+      <button class="commit-cancel"  onclick="cancelStreamAction('${cardId}')">Cancel</button>
+      <button class="commit-approve-all" onclick="approveAllStream('${cardId}')">Approve All</button>
     </div>
   </div>`;
 }

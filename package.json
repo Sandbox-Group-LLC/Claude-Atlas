@@ -9,12 +9,13 @@
     "dist": "./node_modules/.bin/electron-builder --mac && rm -rf dist/mac-arm64"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "pg": "^8.11.0",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
-    "electron-builder": "^24.13.3",
-    "electron": "41.2.0"
+    "electron": "41.2.0",
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.atlas.browser",

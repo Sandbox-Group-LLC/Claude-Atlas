@@ -95,6 +95,10 @@ if (process.platform === 'darwin') {
 }
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
+// Studio chat uses the native tool-use agentic engine (ported from ForgeOS "Frank").
+const CHAT_MODEL = 'claude-opus-4-8';
+const MAX_CHAT_ROUNDS = 20;
+const READ_ONLY_CHAT_TOOLS = new Set(['gh_read', 'render_logs', 'neon_query']);
 const CHROME_UA    = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const os = require('os');
 const crypto = require('crypto');
@@ -399,7 +403,7 @@ function buildActionInstructions(tools) {
   return blocks.join('\n\n');
 }
 
-async function buildSystemPrompt(projectId, page, lastUserMessage = '') {
+async function buildSystemPrompt(projectId, page, lastUserMessage = '', nativeTools = false) {
   const settings = loadSettings();
   const project = loadProjects().find(p => p.id === projectId);
   const env = settings.envVars || {};
@@ -502,7 +506,13 @@ async function buildSystemPrompt(projectId, page, lastUserMessage = '') {
   // Core system prompt + tool capabilities
   const corePrompt = `You are Claude, embedded in Atlas browser.\nCurrent page — Title: ${page.title}\nURL: ${page.url}\n\nContent:\n${page.body}\n\nBe concise and direct.\n\nCRITICAL: If any GitHub files above say "[fetch failed]" or "[not found]", you do NOT have that content. Never fabricate file contents, session logs, commit history, or API responses. If you can't verify something, say so plainly.`;
 
-  const toolInstructions = availableTools.length > 0 ? `\n\n---\n\n${buildActionInstructions(availableTools)}` : '';
+  // Native tool use (Frank-style engine): the model calls real tools, so skip the
+  // legacy ```action/```commit prompt scaffolding and give a short capability note.
+  const toolInstructions = nativeTools
+    ? (availableTools.length
+        ? `\n\n---\n\nYou have native tools available: ${availableTools.join(', ')}. Call them directly via tool use — do NOT paste fenced action/commit blocks. Atlas shows the user an approval card before any write or side-effecting action (commits, sends, deploys); read-only tools (gh_read, render_logs, neon_query) run automatically. Always gh_read a file before you gh_commit to it so you have the current content and SHA. Never print code in chat — make the change with gh_commit instead. Keep chat replies concise; do the detailed work through tools.`
+        : '')
+    : (availableTools.length > 0 ? `\n\n---\n\n${buildActionInstructions(availableTools)}` : '');
 
   parts.push(corePrompt + toolInstructions);
   return parts.join('\n\n---\n\n');
@@ -665,7 +675,7 @@ async function getPageContent() {
 // ─── Claude ───────────────────────────────────────────────────────────────────
 function callClaude(system, messages, apiKey) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 80000, system, messages });
+    const body = JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 16000, system, messages });
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
@@ -1075,6 +1085,262 @@ ipcMain.handle('chat', async (_, { messages, apiKey, projectId }) => {
   }
   return response;
 });
+
+// ─── Studio chat: native tool-use agentic engine (ported from ForgeOS "Frank") ──
+// Streams text + tool activity to the renderer over the 'chat-event' channel and
+// runs a real tool_use/tool_result loop instead of regex-scraping fenced blocks.
+
+function buildChatTools(availableTools) {
+  const tools = [];
+  if (availableTools.includes('github')) {
+    tools.push({
+      name: 'gh_read',
+      description: 'Read a file from a GitHub repo. Always read a file before committing to it so you have its current content and SHA. Returns the file content prefixed with its SHA.',
+      input_schema: { type: 'object', properties: {
+        owner: { type: 'string' }, repo: { type: 'string' }, path: { type: 'string', description: 'path within the repo, e.g. src/app.js' },
+        branch: { type: 'string', description: 'branch name (defaults to main)' },
+      }, required: ['owner', 'repo', 'path'] },
+    });
+    tools.push({
+      name: 'gh_commit',
+      description: 'Commit a change to a file in a GitHub repo. Provide find+replace for a targeted edit, or content for a full-file rewrite/new file. gh_read the file first. The user approves before it lands.',
+      input_schema: { type: 'object', properties: {
+        owner: { type: 'string' }, repo: { type: 'string' }, path: { type: 'string' },
+        branch: { type: 'string', description: 'branch (defaults to main)' },
+        message: { type: 'string', description: 'commit message' },
+        find: { type: 'string', description: 'exact text to find (targeted edit)' },
+        replace: { type: 'string', description: 'replacement text for find' },
+        content: { type: 'string', description: 'complete new file content (large changes / new files)' },
+      }, required: ['owner', 'repo', 'path', 'message'] },
+    });
+  }
+  if (availableTools.includes('slack')) tools.push({
+    name: 'slack_send', description: 'Send a Slack message to a channel.',
+    input_schema: { type: 'object', properties: { channel: { type: 'string', description: '#channel-name or a channel ID' }, text: { type: 'string' } }, required: ['channel', 'text'] },
+  });
+  if (availableTools.includes('gmail')) tools.push({
+    name: 'gmail_send', description: 'Send an email via the connected Gmail account.',
+    input_schema: { type: 'object', properties: { to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, required: ['to', 'subject', 'body'] },
+  });
+  if (availableTools.includes('hubspot')) {
+    tools.push({ name: 'hs_note', description: 'Log a note on a HubSpot contact.', input_schema: { type: 'object', properties: { contactId: { type: 'string' }, note: { type: 'string' } }, required: ['contactId', 'note'] } });
+    tools.push({ name: 'hs_contact', description: 'Create a HubSpot contact.', input_schema: { type: 'object', properties: { email: { type: 'string' }, firstname: { type: 'string' }, lastname: { type: 'string' }, company: { type: 'string' } }, required: ['email'] } });
+  }
+  if (availableTools.includes('render')) {
+    tools.push({ name: 'render_deploy', description: 'Trigger a Render deploy for a service.', input_schema: { type: 'object', properties: { serviceId: { type: 'string' }, serviceName: { type: 'string' } }, required: ['serviceId'] } });
+    tools.push({ name: 'render_logs', description: 'Fetch Render build logs for a service/deploy. Use after a failed deploy to read the real error before fixing.', input_schema: { type: 'object', properties: { serviceId: { type: 'string' }, deployId: { type: 'string' }, serviceName: { type: 'string' } }, required: ['serviceId'] } });
+  }
+  if (availableTools.includes('imessage')) tools.push({
+    name: 'imessage_send', description: 'Send an iMessage.',
+    input_schema: { type: 'object', properties: { to: { type: 'string', description: 'phone number or email' }, message: { type: 'string' } }, required: ['to', 'message'] },
+  });
+  if (availableTools.includes('neon')) tools.push({
+    name: 'neon_query', description: 'Run a SQL query against the project\'s Neon Postgres database. SELECT only unless the user explicitly asks for a write.',
+    input_schema: { type: 'object', properties: { sql: { type: 'string' } }, required: ['sql'] },
+  });
+  return tools;
+}
+
+async function executeChatTool(name, input, projectId) {
+  switch (name) {
+    case 'gh_read': {
+      const file = await bridgeCall('/gh/read', { owner: input.owner, repo: input.repo, path: input.path, branch: input.branch || 'main' });
+      if (file.error) throw new Error(file.error);
+      return `File: ${input.path} (sha:${file.sha})\n\n${file.content}`;
+    }
+    case 'gh_commit': {
+      const file = await bridgeCall('/gh/read', { owner: input.owner, repo: input.repo, path: input.path, branch: input.branch || 'main' });
+      if (file.error) throw new Error(file.error);
+      const fileContent = (file.content || '').replace(/\r\n/g, '\n');
+      let newContent = fileContent;
+      if (input.content) {
+        newContent = input.content.replace(/\r\n/g, '\n');
+      } else if (input.find && input.replace !== undefined) {
+        const find = input.find.replace(/\r\n/g, '\n');
+        const repl = input.replace.replace(/\r\n/g, '\n');
+        if (fileContent.includes(find)) {
+          newContent = fileContent.replace(find, repl);
+        } else {
+          // Fuzzy fallback: match ignoring trailing whitespace per line
+          const fileLines = fileContent.split('\n');
+          const findLines = find.split('\n').map(l => l.trimEnd());
+          let startIdx = -1;
+          for (let i = 0; i <= fileLines.length - findLines.length; i++) {
+            let match = true;
+            for (let j = 0; j < findLines.length; j++) {
+              if (fileLines[i + j].trimEnd() !== findLines[j]) { match = false; break; }
+            }
+            if (match) { startIdx = i; break; }
+          }
+          if (startIdx >= 0) {
+            const before = fileLines.slice(0, startIdx);
+            const after = fileLines.slice(startIdx + findLines.length);
+            newContent = [...before, ...repl.split('\n'), ...after].join('\n');
+          } else {
+            throw new Error(`Could not find "${find.slice(0, 80)}…" in ${input.path} — the file may have changed since it was read. Re-read it and retry.`);
+          }
+        }
+      } else {
+        throw new Error('gh_commit needs either content (full rewrite) or find+replace (targeted edit).');
+      }
+      const r = await bridgeCall('/gh/write', { owner: input.owner, repo: input.repo, path: input.path, content: newContent, sha: file.sha, message: input.message, branch: input.branch || 'main' });
+      if (!r.ok) throw new Error(r.error || 'commit failed');
+      return `Committed ${input.path} — ${(r.sha || '').slice(0, 7)}`;
+    }
+    case 'slack_send': {
+      let channel = input.channel;
+      if (channel && channel.startsWith('#')) {
+        const chans = await bridgeCall('/slack/channels');
+        const found = chans.channels?.find(c => c.name === channel.slice(1));
+        if (found) channel = found.id;
+      }
+      const r = await bridgeCall('/slack/send', { channel, text: input.text });
+      if (r.error) throw new Error(r.error);
+      return `Sent to ${input.channel}`;
+    }
+    case 'gmail_send': {
+      const r = await bridgeCall('/gmail/send', { to: input.to, subject: input.subject, body: input.body });
+      if (r.error) throw new Error(r.error);
+      return `Email sent to ${input.to}`;
+    }
+    case 'hs_note': {
+      const r = await bridgeCall('/hs/note/create', { contactId: input.contactId, note: input.note });
+      if (r.error) throw new Error(r.error);
+      return `Note logged on contact ${input.contactId}`;
+    }
+    case 'hs_contact': {
+      const r = await bridgeCall('/hs/contact/create', { email: input.email, firstname: input.firstname, lastname: input.lastname, company: input.company });
+      if (r.error) throw new Error(r.error);
+      return `Contact created: ${input.email}`;
+    }
+    case 'render_deploy': {
+      const r = await bridgeCall('/render/deploy', { serviceId: input.serviceId });
+      if (!r.ok) throw new Error(r.error || 'deploy failed');
+      return `Deploy triggered — ${r.deployId}`;
+    }
+    case 'render_logs': {
+      const r = await bridgeCall('/render/logs', { serviceId: input.serviceId, deployId: input.deployId });
+      if (r.error) throw new Error(r.error);
+      const logText = r.logs || (r.events ? r.events.map(e => `[${e.type}] ${e.details || JSON.stringify(e)}`).join('\n') : 'No logs available');
+      return `Build logs for deploy ${r.deployId || ''}${r.note ? ' (' + r.note + ')' : ''}:\n${logText.slice(-8000)}`;
+    }
+    case 'imessage_send': {
+      await bridgeCall('/imessage/send', { recipient: input.to, message: input.message });
+      return `iMessage sent to ${input.to}`;
+    }
+    case 'neon_query': {
+      const proj = loadProjects().find(p => p.id === projectId);
+      const neonUrl = proj?.neonUrl || undefined;
+      const sql = String(input.sql || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+      const r = await bridgeCall('/neon/query', { sql, ...(neonUrl ? { neonUrl } : {}) });
+      if (r.error) throw new Error(r.error);
+      return `${r.rowCount} row(s):\n${JSON.stringify(r.rows?.slice(0, 20), null, 2)}`;
+    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+const pendingChatApprovals = new Map(); // approvalId → resolver
+ipcMain.on('chat-approve', (_, { approvalId, outcome }) => {
+  const resolve = pendingChatApprovals.get(approvalId);
+  if (resolve) { pendingChatApprovals.delete(approvalId); resolve(outcome); }
+});
+
+ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => {
+  const settings = loadSettings();
+  const key = apiKey || settings.apiKey || settings.envVars?.ANTHROPIC_API_KEY || settings.envVars?.CLAUDE_API_KEY || '';
+  if (!key) return { ok: false, error: 'No API key configured' };
+  const send = (m) => { try { if (!event.sender.isDestroyed()) event.sender.send('chat-event', m); } catch {} };
+
+  try {
+    const page = await getPageContent().catch(() => ({ title: '', url: '', body: '' }));
+    const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    const systemPrompt = await buildSystemPrompt(projectId, page, lastUser, true);
+    const project = loadProjects().find(p => p.id === projectId);
+    const availableTools = getAvailableTools(project, settings.envVars || {});
+    const tools = buildChatTools(availableTools);
+
+    const Anthropic = require('@anthropic-ai/sdk');
+    const Client = Anthropic.default || Anthropic;
+    const client = new Client({ apiKey: key });
+
+    // Seed with the renderer's text history; tool_use/tool_result blocks are appended
+    // within this turn only.
+    const conv = messages.map(m => ({ role: m.role, content: String(m.content) }));
+    let finalText = '';
+    let autoApprove = false;
+
+    for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
+      // Prompt caching: breakpoint on the system prompt and the last tool def, so
+      // every round after the first reads the stable prefix at ~10% input cost.
+      const cachedSystem = [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }];
+      const cachedTools = tools.map((t, i) => i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t);
+
+      let stream;
+      try {
+        stream = await client.messages.stream({
+          model: CHAT_MODEL, max_tokens: 16000,
+          system: cachedSystem, tools: cachedTools, messages: conv,
+        });
+      } catch (e) {
+        send({ type: 'error', error: e.message });
+        return { ok: false, error: e.message };
+      }
+
+      for await (const ev of stream) {
+        if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+          send({ type: 'chunk', text: ev.delta.text });
+        }
+      }
+      const finalMsg = await stream.finalMessage();
+      conv.push({ role: 'assistant', content: finalMsg.content });
+
+      const assistantText = finalMsg.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      const toolBlocks = finalMsg.content.filter(b => b.type === 'tool_use');
+
+      if (toolBlocks.length === 0) { finalText = assistantText; break; }
+      send({ type: 'round_break' }); // assistant paused to call tools; start a fresh bubble next round
+
+      const toolResults = [];
+      for (const tu of toolBlocks) {
+        send({ type: 'tool_start', tool: tu.name, input: tu.input });
+        const needsApproval = !READ_ONLY_CHAT_TOOLS.has(tu.name) && !autoApprove;
+        if (needsApproval) {
+          const approvalId = `apr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          send({ type: 'approval', approvalId, tool: tu.name, input: tu.input });
+          const outcome = await new Promise(res => { pendingChatApprovals.set(approvalId, res); });
+          if (outcome === 'approve_all') {
+            autoApprove = true;
+          } else if (outcome !== 'approved') {
+            toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: 'User cancelled this action.' });
+            send({ type: 'tool_done', tool: tu.name, result: 'Cancelled', cancelled: true });
+            continue;
+          }
+        }
+        try {
+          const result = await executeChatTool(tu.name, tu.input, projectId);
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: String(result) });
+          send({ type: 'tool_done', tool: tu.name, result: String(result).split('\n')[0].slice(0, 160) });
+        } catch (e) {
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Error: ${e.message}`, is_error: true });
+          send({ type: 'tool_error', tool: tu.name, error: e.message });
+        }
+      }
+      conv.push({ role: 'user', content: toolResults });
+    }
+
+    send({ type: 'done', text: finalText });
+    if (finalText && lastUser) {
+      saveMemory(`Q: ${String(lastUser).slice(0, 300)}\nA: ${finalText.slice(0, 500)}`, projectId, 'conversation').catch(() => {});
+    }
+    return { ok: true, text: finalText };
+  } catch (e) {
+    send({ type: 'error', error: e.message });
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle('summarize',   async (_, { apiKey, projectId }) => { const p = await getPageContent(); return callClaude(await buildSystemPrompt(projectId, p), [{ role:'user', content:`Summarize in 3-5 bullets:\n${p.title}\n${p.url}\n\n${p.body}` }], apiKey); });
 ipcMain.handle('extract',     async (_, { apiKey, projectId }) => { const p = await getPageContent(); return callClaude(await buildSystemPrompt(projectId, p), [{ role:'user', content:`Extract key data:\n${p.title}\n${p.url}\n\n${p.body}` }], apiKey); });
 ipcMain.handle('explain',     async (_, { apiKey, projectId }) => { const p = await getPageContent(); return callClaude(await buildSystemPrompt(projectId, p), [{ role:'user', content:`Explain in plain language:\n${p.title}\n${p.url}\n\n${p.body}` }], apiKey); });

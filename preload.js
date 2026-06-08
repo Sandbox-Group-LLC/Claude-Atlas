@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('atlas', {
   toggleStudio: ()               => ipcRenderer.invoke('toggle-studio'),
 
   chat:         (msgs, key, pid) => ipcRenderer.invoke('chat',       { messages: msgs, apiKey: key, projectId: pid }),
+  // Native tool-use streaming chat engine
+  chatStream:   (msgs, key, pid) => ipcRenderer.invoke('chat-stream', { messages: msgs, apiKey: key, projectId: pid }),
+  chatApprove:  (approvalId, outcome) => ipcRenderer.send('chat-approve', { approvalId, outcome }),
+  onChatEvent:  (cb) => { ipcRenderer.on('chat-event', (_, d) => cb(d)); },
   summarize:    (key, pid)       => ipcRenderer.invoke('summarize',   { apiKey: key, projectId: pid }),
   extract:      (key, pid)       => ipcRenderer.invoke('extract',     { apiKey: key, projectId: pid }),
   explain:      (key, pid)       => ipcRenderer.invoke('explain',     { apiKey: key, projectId: pid }),
