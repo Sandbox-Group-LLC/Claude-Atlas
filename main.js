@@ -17,9 +17,8 @@ let bridgeProc = null;
 
 function startBridge() {
   const bridgePath = path.join(__dirname, 'mcp-bridge.js');
-  const { utilityProcess } = require('electron');
-  // Use Electron's utilityProcess for packaged apps (process.execPath is the Electron binary, not Node)
-  // In dev mode, fall back to spawn with the system Node
+  // Packaged: fork with ELECTRON_RUN_AS_NODE (process.execPath is the Electron binary, not Node).
+  // Dev: spawn with the system Node.
   if (app.isPackaged) {
     bridgeProc = require('child_process').fork(bridgePath, [], {
       env: { ...process.env, ATLAS_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'), ELECTRON_RUN_AS_NODE: '1' },
@@ -40,6 +39,11 @@ function startBridge() {
     if (match && !bridgePort) {
       bridgePort = parseInt(match[1]);
       console.log('[bridge] started on port', bridgePort);
+      if (bridgePort !== 3847) {
+        console.warn(`[bridge] WARNING: running on fallback port ${bridgePort}, not 3847. ` +
+          `Google OAuth will fail because its registered redirect URI uses port 3847. ` +
+          `Free up port 3847 and restart to use Google features.`);
+      }
     }
   });
 
@@ -833,7 +837,9 @@ ipcMain.handle('open-oauth-window', (_, url) => {
   oauthWin.show();
   oauthWin.focus();
 
-  const isCallback = (u) => u.startsWith('http://localhost:3847/oauth/google/callback');
+  // Match by pathname, not host:port — the bridge may run on a fallback port (see startBridge),
+  // and the redirect URI is built from the bridge's actual port.
+  const isCallback = (u) => { try { return new URL(u).pathname === '/oauth/google/callback'; } catch { return false; } };
 
   oauthWin.webContents.on('did-navigate', (_, navUrl) => {
     console.log('[oauth] navigated to:', navUrl.slice(0, 100));
