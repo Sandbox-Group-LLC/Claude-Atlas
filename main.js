@@ -108,10 +108,10 @@ const CHROME_UA    = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKi
 const os = require('os');
 const crypto = require('crypto');
 
-const TAB_WIDTH    = 220;
-const NAV_HEIGHT   = 52;
-const KPI_HEIGHT   = 34;
-const STUDIO_WIDTH = 420;
+const NAV_HEIGHT     = 52;
+const TABSTRIP_HEIGHT = 36; // horizontal tab strip between the nav bar and the KPI bar
+const KPI_HEIGHT     = 34;
+const STUDIO_WIDTH   = 420;
 
 let mainWindow, tabs = new Map(), activeTabId = null;
 let studioOpen = false, downloads = new Map();
@@ -568,8 +568,8 @@ ipcMain.on('url-suggest-open', () => {
   if (!tabs.has(activeTabId)) return;
   const [w, h] = mainWindow.getContentSize();
   const sw = studioOpen ? STUDIO_WIDTH : 0;
-  const topY = NAV_HEIGHT + KPI_HEIGHT + 300; // push down by suggest height
-  tabs.get(activeTabId).view.setBounds({ x: TAB_WIDTH, y: topY, width: Math.max(w - TAB_WIDTH - sw, 100), height: Math.max(h - topY, 100) });
+  const topY = NAV_HEIGHT + TABSTRIP_HEIGHT + KPI_HEIGHT + 300; // push down by suggest height
+  tabs.get(activeTabId).view.setBounds({ x: 0, y: topY, width: Math.max(w - sw, 100), height: Math.max(h - topY, 100) });
 });
 ipcMain.on('url-suggest-close', () => {
   if (tabs.has(activeTabId)) tabs.get(activeTabId).view.setBounds(getTabBounds());
@@ -578,8 +578,8 @@ ipcMain.on('url-suggest-close', () => {
 function getTabBounds() {
   const [w, h] = mainWindow.getContentSize();
   const sw = studioOpen ? STUDIO_WIDTH : 0;
-  const topY = NAV_HEIGHT + KPI_HEIGHT;
-  return { x: TAB_WIDTH, y: topY, width: Math.max(w - TAB_WIDTH - sw, 100), height: Math.max(h - topY, 100) };
+  const topY = NAV_HEIGHT + TABSTRIP_HEIGHT + KPI_HEIGHT;
+  return { x: 0, y: topY, width: Math.max(w - sw, 100), height: Math.max(h - topY, 100) };
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -617,9 +617,13 @@ function createTab(url = 'https://www.google.com') {
   view.webContents.loadURL(url);
   trackVisit(url, url); // track immediately, title updates later
   view.webContents.on('page-title-updated', (_, t) => { if (tabs.has(id)) { tabs.get(id).title = t; mainWindow.webContents.send('tab-updated', { id, title: t }); if (tabs.get(id).url) trackVisit(tabs.get(id).url, t); } });
-  const ns = u => { if (tabs.has(id)) { tabs.get(id).url = u; mainWindow.webContents.send('tab-updated', { id, url: u }); trackVisit(u, tabs.get(id).title); } };
-  view.webContents.on('did-navigate',         (_, u) => ns(u));
-  view.webContents.on('did-navigate-in-page', (_, u) => ns(u));
+  // Real favicon from the page (more reliable than guessing from the hostname).
+  view.webContents.on('page-favicon-updated', (_, favs) => { if (tabs.has(id) && favs && favs[0]) { tabs.get(id).favicon = favs[0]; mainWindow.webContents.send('tab-updated', { id, favicon: favs[0] }); } });
+  // nav flag lets the renderer refresh the favicon only on a real page load, not on
+  // every in-page (hash/pushState) navigation — that churn was the "haywire" bug.
+  const ns = (u, nav) => { if (tabs.has(id)) { tabs.get(id).url = u; mainWindow.webContents.send('tab-updated', { id, url: u, nav }); trackVisit(u, tabs.get(id).title); } };
+  view.webContents.on('did-navigate',         (_, u) => ns(u, 'full'));
+  view.webContents.on('did-navigate-in-page', (_, u) => ns(u, 'inpage'));
   view.webContents.on('did-start-loading', () => { if (activeTabId === id) mainWindow.webContents.send('loading', true); });
   view.webContents.on('did-stop-loading',  () => { if (activeTabId === id) mainWindow.webContents.send('loading', false); });
   view.webContents.on('context-menu', (_, params) => {
