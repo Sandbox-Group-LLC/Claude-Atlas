@@ -431,7 +431,7 @@ svg.lucide { display:block; stroke-width:1.75; }
               <button class="ctx-btn" onclick="confirmNewProject()"><i data-lucide="check"></i></button>
               <button class="ctx-btn" onclick="cancelNewProject()"><i data-lucide="x"></i></button>
             </div>
-            <div class="ctx-row">
+            <div class="ctx-row" id="conv-ctx-row">
               <span class="ctx-icon"><i data-lucide="message-circle"></i></span>
               <select class="ctx-sel" id="conv-sel" onchange="changeConversation(this.value)">
                 <option value="">New conversation</option>
@@ -974,6 +974,8 @@ function setMode(m) {
   mode = m;
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('on', el.dataset.mode === m));
   document.getElementById('ctx-bar').style.display       = (m === 'settings' || m === 'tools' || m === 'history') ? 'none' : 'flex';
+  // Conversation picker only applies to Chat; Actions are one-shot and don't use a thread.
+  document.getElementById('conv-ctx-row').style.display   = (m === 'chat') ? 'flex' : 'none';
   document.getElementById('chat-mode').style.display     = m === 'chat'     ? 'flex' : 'none';
   document.getElementById('actions-mode').style.display  = m === 'actions'  ? 'flex' : 'none';
   document.getElementById('tools-mode').style.display    = m === 'tools'    ? 'flex' : 'none';
