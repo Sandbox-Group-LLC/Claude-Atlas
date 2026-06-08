@@ -1,0 +1,2314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Atlas</title>
+<script src="https://unpkg.com/lucide@0.383.0/dist/umd/lucide.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sb:220px; --nav:52px; --kpi:34px; --st:420px;
+  --bg:#16171f; --surface:rgba(255,255,255,.055); --hover:rgba(255,255,255,.085);
+  --active:rgba(255,255,255,.13); --accent:#7aa2f7; --accent2:#bb9af7;
+  --adim:rgba(122,162,247,.15); --text:#c0caf5; --dim:#565f89;
+  --border:rgba(255,255,255,.07); --r:7px;
+}
+html,body { height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+  font:13px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; -webkit-font-smoothing:antialiased; }
+
+/* ── Lucide icons ── */
+svg.lucide { display:block; stroke-width:1.75; }
+
+/* ── Layout ── */
+#chrome { display:flex; height:100vh; width:100vw; }
+
+/* ── Sidebar ── */
+#sidebar { width:var(--sb); min-width:var(--sb); background:var(--bg); border-right:1px solid var(--border); display:flex; flex-direction:column; -webkit-app-region:drag; }
+#sidebar-top { padding:44px 8px 4px; -webkit-app-region:drag; }
+#new-tab-btn { all:unset; -webkit-app-region:no-drag; display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border-radius:var(--r); cursor:pointer; color:var(--dim); transition:.12s; font-size:13px; }
+#new-tab-btn:hover { background:var(--surface); color:var(--text); }
+#new-tab-btn svg.lucide { width:16px; height:16px; }
+#new-tab-btn .ntlabel { font-size:13px; }
+#tabs { flex:1; overflow-y:auto; padding:2px 8px 8px; scrollbar-width:none; }
+#tabs::-webkit-scrollbar { display:none; }
+.tab { -webkit-app-region:no-drag; display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:var(--r); cursor:pointer; margin-bottom:2px; transition:background .12s; min-width:0; }
+.tab:hover { background:var(--surface); }
+.tab.active { background:var(--active); }
+.tab-fav { width:16px; height:16px; min-width:16px; border-radius:3px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.tab-fav img { width:100%; height:100%; object-fit:contain; }
+.tab-fav svg.lucide { width:13px; height:13px; color:var(--dim); }
+.tab-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; }
+.tab-x { opacity:0; width:16px; height:16px; min-width:16px; border-radius:3px; display:flex; align-items:center; justify-content:center; color:var(--dim); transition:.1s; cursor:pointer; }
+.tab:hover .tab-x { opacity:1; }
+.tab-x:hover { background:var(--hover); color:var(--text); }
+.tab-x svg.lucide { width:11px; height:11px; }
+
+/* ── Main ── */
+#main { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+/* ── Nav ── */
+#nav { height:var(--nav); background:var(--bg); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; padding:0 10px; -webkit-app-region:drag; position:relative; }
+.nbtn { all:unset; -webkit-app-region:no-drag; width:30px; height:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; transition:.12s; }
+.nbtn:hover:not(:disabled) { background:var(--surface); color:var(--text); }
+.nbtn:disabled { opacity:.3; pointer-events:none; }
+.nbtn svg.lucide { width:18px; height:18px; }
+#url-wrap { -webkit-app-region:no-drag; flex:1; }
+#url { width:100%; padding:7px 14px; background:var(--surface); border:1px solid var(--border); border-radius:20px; color:var(--text); font-size:13px; outline:none; font-family:inherit; transition:.15s; }
+#url:focus { background:var(--hover); border-color:var(--accent); box-shadow:0 0 0 2px var(--adim); }
+#url-suggest {
+  display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
+  background:#1a1b26; border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;
+  max-height:280px; overflow-y:auto;
+}
+#url-suggest.show { display:block; }
+.url-sug-item { display:flex; align-items:center; gap:10px; padding:8px 12px; cursor:pointer; transition:.1s; }
+.url-sug-item:hover, .url-sug-item.active { background:var(--surface); }
+.url-sug-fav { width:16px; height:16px; min-width:16px; display:flex; align-items:center; justify-content:center; font-size:11px; }
+.url-sug-fav img { width:100%; height:100%; border-radius:2px; }
+.url-sug-info { flex:1; min-width:0; }
+.url-sug-title { font-size:12.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.url-sug-url   { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#dl-btn { all:unset; -webkit-app-region:no-drag; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--dim); transition:.12s; position:relative; }
+#dl-btn:hover { background:var(--surface); }
+#dl-btn svg.lucide { width:16px; height:16px; }
+#dl-badge { position:absolute; top:3px; right:3px; width:7px; height:7px; border-radius:50%; background:var(--accent); display:none; }
+#dl-badge.show { display:block; }
+#studio-btn { all:unset; -webkit-app-region:no-drag; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--dim); transition:.12s; }
+#studio-btn:hover { background:var(--surface); }
+#studio-btn.on { background:var(--adim); color:var(--accent); }
+#studio-btn svg.lucide { width:17px; height:17px; }
+
+/* ── KPI status bar ── */
+#kpi-bar { height:var(--kpi); background:var(--bg); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 14px; flex-shrink:0; font-size:11.5px; color:var(--dim); -webkit-app-region:no-drag; }
+.kpi-section { display:flex; align-items:center; gap:6px; }
+.kpi-val { color:var(--text); font-weight:500; }
+.kpi-icon { font-size:14px; line-height:1; }
+.kpi-sep { color:var(--border); margin:0 2px; }
+
+/* ── Find bar ── */
+#find-bar { position:fixed; top:8px; right:56px; z-index:999; background:#1e2030; border:1px solid var(--border); border-radius:8px; display:none; align-items:center; gap:6px; padding:4px 8px; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+#find-bar.open { display:flex; }
+#find-input { width:200px; padding:5px 10px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:13px; font-family:inherit; outline:none; }
+#find-input:focus { border-color:var(--accent); }
+#find-count { font-size:11px; color:var(--dim); white-space:nowrap; min-width:50px; }
+.find-btn { all:unset; -webkit-app-region:no-drag; width:24px; height:24px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; transition:.1s; }
+.find-btn:hover { background:var(--surface); color:var(--text); }
+.find-btn svg.lucide { width:13px; height:13px; }
+
+/* ── Loading bar ── */
+#loadbar { position:fixed; top:0; left:var(--sb); right:0; height:2px; z-index:1000; background:linear-gradient(90deg,var(--accent),var(--accent2)); opacity:0; transform:scaleX(0); transform-origin:left; }
+#loadbar.loading { opacity:1; animation:lpulse 1.2s ease-in-out infinite; }
+@keyframes lpulse { 0%{transform:scaleX(0);opacity:1} 60%{transform:scaleX(.7);opacity:1} 100%{transform:scaleX(1);opacity:0} }
+
+/* ── Content row ── */
+#content-row { flex:1; display:flex; overflow:hidden; }
+#browser-area { flex:1; background:#1a1b26; }
+
+/* ── Studio ── */
+#studio { width:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; background:#13141c; border-left:1px solid var(--border); transition:width .25s cubic-bezier(.4,0,.2,1),min-width .25s cubic-bezier(.4,0,.2,1); }
+#studio.open { width:var(--st); min-width:var(--st); }
+#studio-head { padding:16px 16px 0; border-bottom:1px solid var(--border); flex-shrink:0; }
+#studio-title { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; margin-bottom:12px; }
+#studio-icon { width:24px; height:24px; border-radius:6px; background:var(--adim); display:flex; align-items:center; justify-content:center; color:var(--accent); }
+#studio-icon svg.lucide { width:14px; height:14px; }
+#modes { display:flex; gap:1px; flex-shrink:0; overflow-x:auto; overflow-y:hidden; }
+.mtab { all:unset; -webkit-app-region:no-drag; padding:5px 8px; border-radius:6px 6px 0 0; cursor:pointer; font-size:11.5px; color:var(--dim); transition:.12s; border-bottom:2px solid transparent; display:flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; }
+.mtab:hover { color:var(--text); }
+.mtab.on { color:var(--accent); border-bottom-color:var(--accent); }
+.mtab svg.lucide { width:14px; height:14px; }
+
+/* ── Studio body ── */
+#studio-body { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+
+/* ── Context bar (project + conversation) ── */
+#ctx-bar { padding:10px 14px; border-bottom:1px solid var(--border); flex-shrink:0; display:flex; flex-direction:column; gap:6px; }
+.ctx-row { display:flex; align-items:center; gap:6px; }
+.ctx-icon { flex-shrink:0; color:var(--dim); }
+.ctx-icon svg.lucide { width:13px; height:13px; }
+.ctx-sel { flex:1; padding:5px 8px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; min-width:0; }
+.ctx-sel:focus { border-color:var(--accent); }
+.ctx-btn { all:unset; -webkit-app-region:no-drag; width:24px; height:24px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; transition:.12s; flex-shrink:0; }
+.ctx-btn:hover { background:var(--hover); color:var(--text); }
+.ctx-btn svg.lucide { width:13px; height:13px; }
+
+/* ── Settings API key input ── */
+.s-key-input { width:100%; padding:6px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:'SF Mono',Consolas,monospace; font-size:12px; outline:none; }
+.s-key-input:focus { border-color:var(--accent); }
+
+/* ── Chat mode ── */
+#chat-mode { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+#msgs { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin; scrollbar-color:var(--surface) transparent; min-height:0; }
+#empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:8px; color:var(--dim); text-align:center; padding:24px; }
+#empty .eico { margin-bottom:6px; color:var(--dim); }
+#empty .eico svg.lucide { width:32px; height:32px; stroke-width:1.5; }
+#empty strong { color:var(--text); font-size:14px; }
+.msg { max-width:100%; }
+.msg.user .bubble { background:var(--adim); margin-left:auto; border-radius:12px 12px 4px 12px; }
+.msg.assistant .bubble { background:var(--surface); border-radius:12px 12px 12px 4px; }
+.bubble { padding:10px 13px; font-size:13px; line-height:1.65; color:var(--text); max-width:92%; white-space:pre-wrap; }
+.msg.assistant .bubble { white-space:normal; }
+.bubble h1,.bubble h2,.bubble h3 { font-weight:700; margin:10px 0 4px; color:var(--text); }
+.bubble h1 { font-size:15px; } .bubble h2 { font-size:14px; } .bubble h3 { font-size:13px; }
+.bubble p { margin:0 0 8px; } .bubble p:last-child { margin-bottom:0; }
+.bubble ul,.bubble ol { margin:4px 0 8px 18px; display:flex; flex-direction:column; gap:2px; }
+.bubble li { line-height:1.55; }
+.bubble strong { font-weight:700; color:var(--text); }
+.bubble em { font-style:italic; }
+.bubble code { background:rgba(0,0,0,.3); padding:1px 5px; border-radius:4px; font-family:'SF Mono',Consolas,monospace; font-size:11.5px; }
+.bubble pre { background:rgba(0,0,0,.3); border:1px solid var(--border); border-radius:6px; padding:10px 12px; overflow-x:auto; margin:6px 0; }
+.bubble pre code { background:none; padding:0; font-size:11.5px; line-height:1.6; }
+.bubble hr { border:none; border-top:1px solid var(--border); margin:8px 0; }
+.bubble blockquote { border-left:3px solid var(--accent); padding-left:10px; color:var(--dim); margin:6px 0; }
+.bubble a { color:var(--accent); text-decoration:none; } .bubble a:hover { text-decoration:underline; }
+.mlabel { font-size:11px; color:var(--dim); margin-bottom:4px; padding:0 2px; }
+.msg.user .mlabel { text-align:right; }
+.dots { display:flex; gap:4px; align-items:center; padding:12px 14px; }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--dim); animation:bob 1.2s ease-in-out infinite; }
+.dot:nth-child(2){animation-delay:.2s} .dot:nth-child(3){animation-delay:.4s}
+@keyframes bob { 0%,80%,100%{transform:scale(.8);opacity:.5} 40%{transform:scale(1);opacity:1} }
+#chat-foot { padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; flex-shrink:0; }
+#chat-in { flex:1; padding:9px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:13px; font-family:inherit; resize:none; outline:none; max-height:120px; min-height:38px; line-height:1.5; transition:.15s; }
+#chat-in:focus { border-color:var(--accent); }
+#send-btn { all:unset; -webkit-app-region:no-drag; width:34px; height:34px; border-radius:8px; background:var(--accent); display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; flex-shrink:0; transition:.12s; }
+#send-btn:hover { opacity:.85; }
+#send-btn:disabled { opacity:.35; pointer-events:none; }
+#send-btn svg.lucide { width:17px; height:17px; }
+
+/* ── Actions mode ── */
+#actions-mode { display:none; flex:1; flex-direction:column; padding:14px; gap:10px; overflow-y:auto; min-height:0; }
+.acard { display:flex; align-items:flex-start; gap:12px; padding:13px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); cursor:pointer; transition:.12s; }
+.acard:hover { background:var(--hover); border-color:rgba(255,255,255,.12); }
+.aico { flex-shrink:0; color:var(--accent); padding-top:1px; }
+.aico svg.lucide { width:20px; height:20px; }
+.atitle { font-weight:600; font-size:13px; margin-bottom:3px; }
+.adesc  { font-size:12px; color:var(--dim); line-height:1.4; }
+#aresult { display:none; padding:13px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); font-size:13px; line-height:1.65; white-space:pre-wrap; max-height:280px; overflow-y:auto; }
+#aresult.show { display:block; }
+.spinner { display:inline-block; width:13px; height:13px; border:2px solid var(--active); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:5px; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ── Settings mode ── */
+#settings-mode { display:none; flex:1; flex-direction:column; overflow-y:auto; padding:16px; gap:20px; min-height:0; }
+.s-section { display:flex; flex-direction:column; gap:8px; }
+.s-label { font-size:11px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+.s-toggle { cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none; transition:color .12s; }
+.s-toggle:hover { color:var(--text); }
+.s-toggle svg.lucide { width:13px; height:13px; }
+.s-textarea { width:100%; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12.5px; font-family:inherit; resize:vertical; min-height:80px; outline:none; line-height:1.55; }
+.s-textarea:focus { border-color:var(--accent); }
+.env-row { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
+.env-key { width:38%; padding:5px 8px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:11.5px; font-family:'SF Mono',Consolas,monospace; outline:none; }
+.env-val { flex:1; padding:5px 8px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; outline:none; }
+.env-key:focus,.env-val:focus { border-color:var(--accent); }
+.env-del { all:unset; -webkit-app-region:no-drag; width:24px; height:24px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; flex-shrink:0; }
+.env-del:hover { background:var(--surface); color:#f7768e; }
+.env-del svg.lucide { width:13px; height:13px; }
+.s-add-btn { all:unset; -webkit-app-region:no-drag; display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:5px; font-size:12px; color:var(--accent); cursor:pointer; border:1px dashed rgba(122,162,247,.3); width:100%; }
+.s-add-btn:hover { background:var(--adim); }
+.s-add-btn svg.lucide { width:13px; height:13px; }
+
+/* ── Saved Cards ── */
+.card-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; font-size:12.5px; }
+.card-item:hover { background:var(--surface); }
+.card-icon { font-size:16px; flex-shrink:0; width:24px; text-align:center; }
+.card-last4 { font-family:'SF Mono',Consolas,monospace; color:var(--text); }
+.card-label { color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-del { all:unset; cursor:pointer; color:var(--dim); padding:2px 4px; border-radius:4px; }
+.card-del:hover { color:#f7768e; background:rgba(247,118,142,.1); }
+.card-del svg.lucide { width:13px; height:13px; }
+#card-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; display:flex; align-items:center; justify-content:center; }
+.card-modal { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:20px; width:360px; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+.card-modal h3 { font-size:14px; font-weight:700; color:var(--text); margin-bottom:14px; }
+.card-modal label { font-size:11px; color:var(--dim); display:block; margin-bottom:3px; margin-top:10px; }
+.card-modal label:first-of-type { margin-top:0; }
+.card-modal input { width:100%; padding:7px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12.5px; outline:none; box-sizing:border-box; font-family:inherit; }
+.card-modal input:focus { border-color:var(--accent); }
+.card-modal .card-note { font-size:10.5px; color:var(--dim); margin-top:12px; }
+.card-modal-btns { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.card-modal-btns button { all:unset; padding:6px 16px; border-radius:6px; font-size:12px; cursor:pointer; }
+.card-modal-btns .cancel { background:var(--surface); border:1px solid var(--border); color:var(--dim); }
+.card-modal-btns .cancel:hover { color:var(--text); }
+.card-modal-btns .save { background:var(--accent); color:#fff; font-weight:600; }
+.card-modal-btns .save:hover { opacity:.85; }
+.s-save-btn { all:unset; -webkit-app-region:no-drag; padding:9px; background:var(--accent); color:#fff; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; text-align:center; width:100%; transition:.12s; }
+.s-save-btn:hover { opacity:.85; }
+.proj-item { background:var(--surface); border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:6px; }
+.proj-header { display:flex; align-items:center; gap:8px; padding:10px 12px; }
+.proj-name { flex:1; font-size:13px; font-weight:500; }
+.proj-actions { display:flex; gap:3px; }
+.proj-actions button { all:unset; -webkit-app-region:no-drag; width:24px; height:24px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; }
+.proj-actions button:hover { background:var(--hover); }
+.proj-actions svg.lucide { width:13px; height:13px; }
+.proj-edit { padding:10px 12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
+.proj-name-inp { width:100%; padding:6px 10px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:13px; font-family:inherit; outline:none; }
+.proj-name-inp:focus { border-color:var(--accent); }
+.proj-save { all:unset; -webkit-app-region:no-drag; padding:6px 14px; background:var(--accent); color:#fff; border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; align-self:flex-end; }
+
+/* ── Downloads tray ── */
+#dl-tray { position:fixed; bottom:0; left:var(--sb); right:0; z-index:998; background:#13141c; border-top:1px solid var(--border); padding:8px 14px; display:none; gap:12px; align-items:center; overflow-x:auto; scrollbar-width:none; min-height:56px; }
+#dl-tray.open { display:flex; }
+#dl-tray::-webkit-scrollbar { display:none; }
+#dl-hdr { font-size:12px; color:var(--dim); white-space:nowrap; display:flex; align-items:center; gap:8px; }
+#dl-clear { all:unset; -webkit-app-region:no-drag; font-size:11px; color:var(--accent); cursor:pointer; }
+#dl-clear:hover { text-decoration:underline; }
+#dl-items { display:flex; gap:8px; }
+.dl-item { display:flex; align-items:center; gap:8px; padding:6px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; min-width:200px; max-width:260px; flex-shrink:0; cursor:pointer; transition:.12s; }
+.dl-item:hover { background:var(--hover); }
+.dl-item-icon { color:var(--accent); flex-shrink:0; }
+.dl-item-icon svg.lucide { width:16px; height:16px; }
+.dl-info { flex:1; min-width:0; }
+.dl-name { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:3px; }
+.dl-meta { font-size:11px; color:var(--dim); }
+.dl-prog { width:100%; height:2px; background:rgba(255,255,255,.08); border-radius:1px; margin-top:4px; }
+.dl-prog-bar { height:100%; border-radius:1px; background:var(--accent); transition:width .3s; }
+.dl-show { all:unset; -webkit-app-region:no-drag; width:22px; height:22px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; }
+.dl-show:hover { background:var(--active); color:var(--text); }
+.dl-show svg.lucide { width:12px; height:12px; }
+
+/* ── Tools mode ── */
+#tools-mode { display:none; flex:1; flex-direction:column; overflow-y:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--surface) transparent; }
+.tool-section { border-bottom:1px solid var(--border); }
+.tool-section-header { display:flex; align-items:center; gap:8px; padding:12px 14px; cursor:pointer; user-select:none; transition:background .12s; }
+.tool-section-header:hover { background:var(--surface); }
+.tool-section-header svg.lucide { width:15px; height:15px; color:var(--accent); }
+.tool-section-title { flex:1; font-size:12.5px; font-weight:600; }
+.tool-section-chev svg.lucide { width:13px; height:13px; color:var(--dim); }
+.tool-section-body { padding:0 14px 14px; display:none; flex-direction:column; gap:8px; }
+.tool-section-body.open { display:flex; }
+.tool-row { display:flex; gap:6px; align-items:center; }
+.tool-input { flex:1; padding:6px 9px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; font-family:inherit; outline:none; }
+.tool-input:focus { border-color:var(--accent); }
+.tool-select { flex:1; padding:6px 9px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
+.tool-btn { all:unset; -webkit-app-region:no-drag; padding:6px 12px; background:var(--surface); border:1px solid var(--border); border-radius:5px; font-size:12px; color:var(--text); cursor:pointer; white-space:nowrap; transition:.12s; }
+.tool-btn:hover { background:var(--hover); }
+.tool-btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.tool-btn.primary:hover { opacity:.85; }
+.tool-btn.danger { color:#f7768e; }
+.tool-btn.danger:hover { background:rgba(247,118,142,.1); border-color:#f7768e; }
+.tool-result { background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:8px 10px; font-size:11.5px; font-family:'SF Mono',Consolas,monospace; color:var(--text); white-space:pre-wrap; max-height:160px; overflow-y:auto; display:none; }
+.tool-result.show { display:block; }
+.service-item { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--surface); border:1px solid var(--border); border-radius:5px; }
+.service-dot { width:7px; height:7px; border-radius:50%; background:#9ece6a; flex-shrink:0; }
+.service-dot.suspended { background:var(--dim); }
+.service-name { flex:1; font-size:12px; }
+.service-url { font-size:11px; color:var(--dim); }
+.memory-item { display:flex; align-items:flex-start; gap:8px; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:5px; }
+.memory-content { flex:1; font-size:12px; line-height:1.5; }
+.memory-meta { font-size:10px; color:var(--dim); margin-top:3px; }
+.memory-del { all:unset; -webkit-app-region:no-drag; color:var(--dim); cursor:pointer; padding:2px; border-radius:3px; flex-shrink:0; }
+.memory-del:hover { color:#f7768e; }
+.memory-del svg.lucide { width:12px; height:12px; }
+/* ── History ── */
+.hist-item { display:flex; align-items:center; gap:10px; padding:9px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:.1s; }
+.hist-item:hover { background:var(--surface); }
+.hist-fav { width:16px; height:16px; min-width:16px; border-radius:3px; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:11px; }
+.hist-fav img { width:100%; height:100%; object-fit:contain; }
+.hist-info { flex:1; min-width:0; }
+.hist-title { font-size:12.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hist-url { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hist-time { font-size:11px; color:var(--dim); white-space:nowrap; flex-shrink:0; }
+.hist-date-group { padding:6px 14px; font-size:10.5px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; background:var(--bg); border-bottom:1px solid var(--border); }
+
+/* ── Tool status dots ── */
+.tool-status-row { display:flex; align-items:center; gap:10px; padding:6px 0; }
+.tool-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.tool-dot.ok  { background:#9ece6a; }
+.tool-dot.off { background:var(--dim); }
+.tool-status-label { font-size:13px; flex:1; }
+.tool-status-note  { font-size:11px; color:var(--dim); }
+
+/* ── Per-project tool toggles ── */
+.proj-tool-grid { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.proj-tool-tag {
+  display:flex; align-items:center; gap:5px; padding:4px 10px;
+  border-radius:20px; font-size:11.5px; cursor:pointer;
+  border:1px solid var(--border); transition:.12s; user-select:none;
+}
+.proj-tool-tag.on  { background:var(--adim); border-color:var(--accent); color:var(--accent); }
+.proj-tool-tag.off { background:var(--surface); color:var(--dim); }
+.proj-tool-tag.disabled { opacity:.4; pointer-events:none; }
+
+/* ── Commit approval card ── */
+.commit-card { background:#1e2030; border:1px solid var(--accent); border-radius:10px; padding:12px 14px; margin-top:6px; max-width:92%; overflow-wrap:break-word; word-break:break-word; }
+.commit-card-title { font-size:11px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.commit-card-repo  { font-size:12px; color:var(--dim); margin-bottom:4px; overflow-wrap:break-word; word-break:break-word; }
+.commit-card-msg   { font-size:13px; font-weight:500; color:var(--text); margin-bottom:10px; overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; }
+.commit-card-btns  { display:flex; gap:8px; }
+.commit-approve { all:unset; -webkit-app-region:no-drag; padding:6px 16px; background:var(--accent); color:#fff; border-radius:5px; font-size:12px; font-weight:600; cursor:pointer; transition:.12s; }
+.commit-approve:hover { opacity:.85; }
+.commit-cancel  { all:unset; -webkit-app-region:no-drag; padding:6px 14px; background:var(--surface); border:1px solid var(--border); color:var(--dim); border-radius:5px; font-size:12px; cursor:pointer; transition:.12s; }
+.commit-cancel:hover  { color:var(--text); background:var(--hover); }
+.commit-approve-all { all:unset; -webkit-app-region:no-drag; padding:6px 10px; background:transparent; border:1px solid rgba(122,162,247,.3); color:var(--accent); border-radius:5px; font-size:11px; cursor:pointer; transition:.12s; white-space:nowrap; }
+.commit-approve-all:hover { background:var(--adim); border-color:var(--accent); }
+.auto-approved { font-size:12px; color:var(--dim); padding:4px 0; display:flex; align-items:center; gap:6px; }
+.auto-approved .ok { color:#9ece6a; }
+.commit-result  { font-size:12px; margin-top:8px; padding:6px 10px; border-radius:5px; background:var(--surface); overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; }
+.commit-result.ok  { color:#9ece6a; border:1px solid rgba(158,206,106,.3); }
+.commit-result.err { color:#f7768e; border:1px solid rgba(247,118,142,.3); }
+/* Action card accent colors per type */
+.action-card-slack    { border-color:#e01e5a; } .action-card-slack    .commit-card-title { color:#e01e5a; } .action-card-slack    .commit-approve { background:#e01e5a; }
+.action-card-gmail    { border-color:#ea4335; } .action-card-gmail    .commit-card-title { color:#ea4335; } .action-card-gmail    .commit-approve { background:#ea4335; }
+.action-card-hubspot  { border-color:#ff7a59; } .action-card-hubspot  .commit-card-title { color:#ff7a59; } .action-card-hubspot  .commit-approve { background:#ff7a59; }
+.action-card-render   { border-color:#46e3b7; } .action-card-render   .commit-card-title { color:#46e3b7; } .action-card-render   .commit-approve { background:#46e3b7; color:#1a1b26; }
+.action-card-imessage { border-color:#34c759; } .action-card-imessage .commit-card-title { color:#34c759; } .action-card-imessage .commit-approve { background:#34c759; }
+.action-card-neon     { border-color:#bb9af7; } .action-card-neon     .commit-card-title { color:#bb9af7; } .action-card-neon     .commit-approve { background:#bb9af7; color:#1a1b26; }
+#toast { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:#2a2b3d; border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:6px; font-size:12px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:999; white-space:nowrap; }
+#toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="chrome">
+
+  <!-- ── Sidebar ── -->
+  <div id="sidebar">
+    <div id="sidebar-top">
+      <button id="new-tab-btn" onclick="window.atlas.newTab()">
+        <i data-lucide="plus"></i>
+        <span class="ntlabel">New Tab</span>
+      </button>
+    </div>
+    <div id="tabs"></div>
+  </div>
+
+  <!-- ── Main ── -->
+  <div id="main">
+    <div id="nav">
+      <button class="nbtn" onclick="window.atlas.goBack()"    title="Back (⌘[)"><i data-lucide="chevron-left"></i></button>
+      <button class="nbtn" onclick="window.atlas.goForward()" title="Forward (⌘])"><i data-lucide="chevron-right"></i></button>
+      <button class="nbtn" onclick="window.atlas.reload()"    title="Reload (⌘R)"><i data-lucide="rotate-cw"></i></button>
+      <div id="url-wrap">
+        <input id="url" type="text" placeholder="Search or enter a URL"
+          onkeydown="urlKey(event)" onfocus="this.select()" oninput="urlInput(this.value)" onblur="hideUrlSuggest()">
+        <div id="url-suggest"></div>
+      </div>
+      <button id="dl-btn"     onclick="toggleDownloads()" title="Downloads (⌘J)"><i data-lucide="download"></i><span id="dl-badge"></span></button>
+      <button id="studio-btn" onclick="toggleStudio()"   title="Studio"><i data-lucide="zap"></i></button>
+    </div>
+
+    <div id="kpi-bar">
+      <div class="kpi-section" id="kpi-weather"><span class="kpi-icon">🌤</span> <span class="kpi-val">Loading…</span></div>
+      <div class="kpi-section" id="kpi-clock"><span class="kpi-val" id="kpi-time"></span></div>
+      <div class="kpi-section" id="kpi-system"><span class="kpi-val" id="kpi-cpu">CPU —%</span> <span class="kpi-sep">·</span> <span class="kpi-val" id="kpi-mem">Mem —%</span></div>
+    </div>
+
+    <div id="content-row">
+      <div id="browser-area"></div>
+
+      <!-- ── Studio ── -->
+      <div id="studio">
+        <div id="studio-head">
+          <div id="studio-title">
+            <div id="studio-icon"><i data-lucide="zap"></i></div>
+            Atlas Studio
+          </div>
+          <div id="modes">
+            <button class="mtab on" data-mode="chat"     onclick="setMode('chat')"><i data-lucide="message-circle"></i> Chat</button>
+            <button class="mtab"    data-mode="actions"  onclick="setMode('actions')"><i data-lucide="zap"></i> Actions</button>
+            <button class="mtab"    data-mode="tools"    onclick="setMode('tools')"><i data-lucide="wrench"></i> Tools</button>
+            <button class="mtab"    data-mode="history"  onclick="setMode('history')"><i data-lucide="clock"></i> History</button>
+            <button class="mtab"    data-mode="settings" onclick="setMode('settings')"><i data-lucide="settings"></i> Settings</button>
+          </div>
+        </div>
+
+        <div id="studio-body">
+          <!-- Context bar -->
+          <div id="ctx-bar">
+            <div class="ctx-row">
+              <span class="ctx-icon"><i data-lucide="folder"></i></span>
+              <select class="ctx-sel" id="project-sel" onchange="changeProject(this.value)">
+                <option value="">No Project</option>
+              </select>
+              <button class="ctx-btn" onclick="showNewProjForm()" title="New project"><i data-lucide="plus"></i></button>
+              <button class="ctx-btn" id="refresh-ctx-btn" onclick="refreshGitHubContext()" title="Refresh GitHub context"><i data-lucide="refresh-cw"></i></button>
+            </div>
+            <div class="ctx-row" id="new-proj-row" style="display:none">
+              <span class="ctx-icon"><i data-lucide="folder-plus"></i></span>
+              <input class="ctx-sel" id="new-proj-name" placeholder="Project name…" onkeydown="newProjKey(event)">
+              <button class="ctx-btn" onclick="confirmNewProject()"><i data-lucide="check"></i></button>
+              <button class="ctx-btn" onclick="cancelNewProject()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="ctx-row">
+              <span class="ctx-icon"><i data-lucide="message-circle"></i></span>
+              <select class="ctx-sel" id="conv-sel" onchange="changeConversation(this.value)">
+                <option value="">New conversation</option>
+              </select>
+              <button class="ctx-btn" onclick="showRenameForm()" title="Rename"><i data-lucide="pencil"></i></button>
+              <button class="ctx-btn" onclick="newConversation()" title="New conversation"><i data-lucide="plus"></i></button>
+            </div>
+            <div class="ctx-row" id="rename-conv-row" style="display:none">
+              <span class="ctx-icon"><i data-lucide="pencil"></i></span>
+              <input class="ctx-sel" id="rename-conv-input" placeholder="Conversation name…" onkeydown="renameConvKey(event)">
+              <button class="ctx-btn" onclick="confirmRename()"><i data-lucide="check"></i></button>
+              <button class="ctx-btn" onclick="cancelRename()"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+
+
+          <!-- Chat -->
+          <div id="chat-mode">
+            <div id="msgs">
+              <div id="empty">
+                <div class="eico"><i data-lucide="message-circle"></i></div>
+                <strong>Ask Claude about this page</strong>
+                <span>Claude sees everything you're viewing</span>
+              </div>
+            </div>
+            <div id="chat-foot">
+              <textarea id="chat-in" rows="1" placeholder="Ask about this page…" onkeydown="chatKey(event)" oninput="grow(this)"></textarea>
+              <button id="send-btn" onclick="send()"><i data-lucide="arrow-up"></i></button>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div id="actions-mode">
+            <div class="acard" onclick="act('summarize')">
+              <div class="aico"><i data-lucide="clipboard-list"></i></div>
+              <div><div class="atitle">Summarize Page</div><div class="adesc">3-5 bullet summary of the current page</div></div>
+            </div>
+            <div class="acard" onclick="act('extract')">
+              <div class="aico"><i data-lucide="table"></i></div>
+              <div><div class="atitle">Extract Data</div><div class="adesc">Key info in a clean structured format</div></div>
+            </div>
+            <div class="acard" onclick="act('explain')">
+              <div class="aico"><i data-lucide="lightbulb"></i></div>
+              <div><div class="atitle">Explain Page</div><div class="adesc">Plain-language breakdown of this page</div></div>
+            </div>
+            <div class="acard" onclick="act('writeEmail')">
+              <div class="aico"><i data-lucide="mail"></i></div>
+              <div><div class="atitle">Draft Email</div><div class="adesc">Compose a professional email about this page</div></div>
+            </div>
+            <div id="aresult"></div>
+          </div>
+
+          <!-- Tools -->
+          <div id="tools-mode">
+            <!-- Gmail -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('gmail')">
+                <i data-lucide="mail"></i>
+                <span class="tool-section-title">Gmail</span>
+                <span class="tool-section-chev" id="gmail-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="gmail-body">
+                <div class="tool-row">
+                  <input class="tool-input" id="gmail-query" placeholder="Search (default: is:unread)" value="is:unread">
+                  <button class="tool-btn primary" onclick="loadGmail()">Load</button>
+                </div>
+                <div id="gmail-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+                <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;flex-direction:column;gap:6px;">
+                  <input class="tool-input" id="gmail-to"      placeholder="To: email@example.com">
+                  <input class="tool-input" id="gmail-subject" placeholder="Subject">
+                  <textarea class="tool-input" id="gmail-body" rows="3" placeholder="Body…" style="resize:vertical;"></textarea>
+                  <button class="tool-btn primary" onclick="gmailSend()">Send Email</button>
+                </div>
+                <div id="gmail-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- Calendar -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('cal')">
+                <i data-lucide="calendar"></i>
+                <span class="tool-section-title">Calendar</span>
+                <span class="tool-section-chev" id="cal-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="cal-body">
+                <div class="tool-row">
+                  <button class="tool-btn primary" onclick="loadCalToday()">Today</button>
+                  <button class="tool-btn" onclick="loadCalUpcoming(7)">7 Days</button>
+                  <button class="tool-btn" onclick="loadCalUpcoming(30)">30 Days</button>
+                </div>
+                <div id="cal-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- Drive -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('drive')">
+                <i data-lucide="hard-drive"></i>
+                <span class="tool-section-title">Google Drive</span>
+                <span class="tool-section-chev" id="drive-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="drive-body">
+                <div class="tool-row">
+                  <input class="tool-input" id="drive-query" placeholder="Search Drive…" onkeydown="if(event.key==='Enter')driveSearch()">
+                  <button class="tool-btn primary" onclick="driveSearch()">Search</button>
+                </div>
+                <div id="drive-results" style="display:flex;flex-direction:column;gap:4px;"></div>
+                <div id="drive-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- Slack -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('slack')">
+                <i data-lucide="hash"></i>
+                <span class="tool-section-title">Slack</span>
+                <span class="tool-section-chev" id="slack-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="slack-body">
+                <div class="tool-row">
+                  <select class="tool-select" id="slack-channel-sel">
+                    <option value="">Load channels…</option>
+                  </select>
+                  <button class="tool-btn" onclick="loadSlackChannels()"><i data-lucide="refresh-cw"></i></button>
+                </div>
+                <div class="tool-row">
+                  <input class="tool-input" id="slack-search-inp" placeholder="Search messages…">
+                  <button class="tool-btn" onclick="slackSearch()">Search</button>
+                </div>
+                <button class="tool-btn" onclick="loadSlackHistory()" style="width:100%">Load Channel History</button>
+                <textarea class="tool-input" id="slack-msg" rows="2" placeholder="Message to send…" style="resize:vertical;"></textarea>
+                <button class="tool-btn primary" onclick="slackSend()">Send Message</button>
+                <div id="slack-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- HubSpot -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('hs')">
+                <i data-lucide="users"></i>
+                <span class="tool-section-title">HubSpot</span>
+                <span class="tool-section-chev" id="hs-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="hs-body">
+                <div class="tool-row">
+                  <input class="tool-input" id="hs-search-inp" placeholder="Search contacts or deals…" onkeydown="if(event.key==='Enter')hsSearch()">
+                  <button class="tool-btn" onclick="hsSearch()">Search</button>
+                </div>
+                <div class="tool-row">
+                  <button class="tool-btn" onclick="hsSearchType='contacts';hsSearch()">Contacts</button>
+                  <button class="tool-btn" onclick="hsSearchType='deals';hsSearch()">Deals</button>
+                </div>
+                <div id="hs-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- iMessage -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('imsg')">
+                <i data-lucide="message-square"></i>
+                <span class="tool-section-title">iMessage</span>
+                <span class="tool-section-chev" id="imsg-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="imsg-body">
+                <div class="tool-row">
+                  <input class="tool-input" id="imsg-contact" placeholder="Phone or email…">
+                  <button class="tool-btn" onclick="imsgRead()">Read</button>
+                </div>
+                <textarea class="tool-input" id="imsg-msg" rows="2" placeholder="Message to send…" style="resize:vertical;"></textarea>
+                <button class="tool-btn primary" onclick="imsgSend()">Send iMessage</button>
+                <div id="imsg-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- GitHub -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('gh')">
+                <i data-lucide="github"></i>
+                <span class="tool-section-title">GitHub</span>
+                <span class="tool-section-chev" id="gh-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="gh-body">
+                <div class="tool-row">
+                  <select class="tool-select" id="gh-repo" onchange="onRepoChange()">
+                    <option value="">Select repo…</option>
+                  </select>
+                </div>
+                <div class="tool-row">
+                  <select class="tool-select" id="gh-branch" style="max-width:120px">
+                    <option>main</option>
+                  </select>
+                  <input class="tool-input" id="gh-path" placeholder="path/to/file.md">
+                </div>
+                <div class="tool-row">
+                  <button class="tool-btn primary" onclick="ghRead()">Read File</button>
+                  <button class="tool-btn" onclick="loadGhRepos()" title="Refresh repos"><i data-lucide="refresh-cw"></i></button>
+                </div>
+                <textarea class="tool-input" id="gh-content" rows="5" placeholder="File content appears here after Read." style="resize:vertical; min-height:80px; opacity:0.8;" readonly></textarea>
+                <div id="gh-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- Render -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('render')">
+                <i data-lucide="server"></i>
+                <span class="tool-section-title">Render</span>
+                <span class="tool-section-chev" id="render-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="render-body">
+                <button class="tool-btn" onclick="loadRenderServices()">Refresh Services</button>
+                <div id="render-services" style="display:flex;flex-direction:column;gap:6px;"></div>
+              </div>
+            </div>
+
+            <!-- Neon -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('neon')">
+                <i data-lucide="database"></i>
+                <span class="tool-section-title">Neon Query</span>
+                <span class="tool-section-chev" id="neon-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="neon-body">
+                <textarea class="tool-input" id="neon-sql" rows="3" placeholder="SELECT * FROM ..." style="resize:vertical; font-family:'SF Mono',Consolas,monospace; font-size:11.5px;"></textarea>
+                <div class="tool-row">
+                  <button class="tool-btn primary" onclick="runNeonQuery()">Run Query</button>
+                </div>
+                <div id="neon-result" class="tool-result"></div>
+              </div>
+            </div>
+
+            <!-- Memory -->
+            <div class="tool-section">
+              <div class="tool-section-header" onclick="toggleToolSection('memory')">
+                <i data-lucide="brain"></i>
+                <span class="tool-section-title">Memory</span>
+                <span class="tool-section-chev" id="memory-chev"><i data-lucide="chevron-right"></i></span>
+              </div>
+              <div class="tool-section-body" id="memory-body">
+                <div class="tool-row">
+                  <input class="tool-input" id="memory-search-inp" placeholder="Search memories…" onkeydown="if(event.key==='Enter')searchMemoriesUI()">
+                  <button class="tool-btn" onclick="searchMemoriesUI()">Search</button>
+                </div>
+                <div class="tool-row">
+                  <input class="tool-input" id="memory-save-inp" placeholder="Save a memory…">
+                  <button class="tool-btn primary" onclick="saveMemoryUI()">Save</button>
+                </div>
+                <button class="tool-btn" onclick="loadRecentMemories()" style="width:100%">Load Recent</button>
+                <div id="memory-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings -->
+          <!-- History -->
+          <div id="history-mode" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0;">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;">
+              <input class="tool-input" id="history-search" placeholder="Search history…" oninput="filterHistory()" style="flex:1">
+              <button class="tool-btn" onclick="clearHistory()" title="Clear all history" style="color:#f7768e">Clear</button>
+            </div>
+            <div id="history-list" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--surface) transparent;"></div>
+          </div>
+
+          <div id="settings-mode">
+            <div class="s-section">
+              <div class="s-label">Claude API Key</div>
+              <input class="s-key-input" id="settings-api-key" type="password" placeholder="sk-ant-…" autocomplete="off" onchange="saveAllSettings()">
+            </div>
+            <div class="s-section">
+              <div class="s-label">Global System Prompt</div>
+              <textarea class="s-textarea" id="global-prompt" rows="4" placeholder="Instructions injected into every conversation…" onchange="saveAllSettings()"></textarea>
+            </div>
+            <div class="s-section" style="padding-top:4px;">
+              <button class="tool-btn primary" onclick="saveAllSettings()" style="width:100%;">Save Settings</button>
+            </div>
+            <div class="s-section">
+              <div class="s-label s-toggle" onclick="toggleEnvVars()">
+                Environment Variables <i data-lucide="chevron-right" id="env-chev"></i>
+              </div>
+              <div id="env-section" style="display:none; flex-direction:column; gap:4px;">
+                <div id="env-list"></div>
+                <button class="s-add-btn" onclick="addEnvVar()"><i data-lucide="plus"></i> Add variable</button>
+              </div>
+            </div>
+
+            <!-- Connected Tools (P3) -->
+            <div class="s-section">
+              <div class="s-label">Connected Tools</div>
+              <div id="tool-status-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);margin-top:4px;">
+                <span style="font-size:13px;flex:1">Google (Gmail, Calendar, Drive)</span>
+                <button class="tool-btn primary" id="google-connect-btn" onclick="connectGoogle()" style="white-space:nowrap">Connect</button>
+                <span id="google-status" style="font-size:12px;color:var(--dim)"></span>
+              </div>
+            </div>
+
+            <div class="s-section">
+              <div class="s-label">Saved Cards</div>
+              <div id="card-list"></div>
+              <button class="s-add-btn" onclick="showAddCardModal()"><i data-lucide="credit-card"></i> Add card</button>
+            </div>
+
+            <div class="s-section">
+              <div class="s-label">Projects</div>
+              <div id="proj-list"></div>
+              <button class="s-add-btn" onclick="newProjectFromSettings()"><i data-lucide="folder-plus"></i> New project</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Find bar -->
+<div id="find-bar">
+  <input id="find-input" type="text" placeholder="Find in page…" oninput="doFind()" onkeydown="findKey(event)">
+  <span id="find-count"></span>
+  <button class="find-btn" onclick="doFind(false)"><i data-lucide="chevron-up"></i></button>
+  <button class="find-btn" onclick="doFind(true)"><i data-lucide="chevron-down"></i></button>
+  <button class="find-btn" onclick="closeFind()"><i data-lucide="x"></i></button>
+</div>
+
+<div id="loadbar"></div>
+<div id="dl-tray">
+  <div id="dl-hdr">Downloads <button id="dl-clear" onclick="clearDls()">Clear all</button></div>
+  <div id="dl-items"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let chatHistory = [], apiKey = '';
+let mode = 'chat', studioOpen = false, dlsOpen = false, findOpen = false;
+let downloads = {}, currentUrl = '', tabHistory = new Map();
+let settings = { globalSystemPrompt: '', envVars: {}, apiKey: '' };
+let projects = [], conversations = [];
+let autoApproveReads = false;
+const SAFE_ACTION_TYPES = new Set(['gh_read', 'render_logs', 'neon_query']);
+let activeProjectId = null, activeConvId = null;
+let toastTimer;
+
+// ── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  initKpiBar();
+
+  // IPC listeners (sync — never block these)
+  window.atlas.onTabCreated(d   => { addTab(d); lucide.createIcons(); });
+  window.atlas.onTabUpdated(d   => updateTab(d));
+  window.atlas.onTabActivated(d => activateTab(d));
+  window.atlas.onTabClosed(d    => removeTab(d));
+  window.atlas.onLoading(v      => document.getElementById('loadbar').classList.toggle('loading', v));
+  window.atlas.onDownloadStarted(dl  => { downloads[dl.id] = dl; updateDlUI(); showDls(); });
+  window.atlas.onDownloadUpdated(dl  => { downloads[dl.id] = dl; updateDlUI(); });
+  window.atlas.onFindResult(r        => { document.getElementById('find-count').textContent = r.matches ? `${r.activeMatchOrdinal} / ${r.matches}` : 'No results'; });
+  window.atlas.onToggleFind(()       => findOpen ? closeFind() : openFind());
+  window.atlas.onFocusUrl(()         => { const u = document.getElementById('url'); u.focus(); u.select(); });
+  window.atlas.onToggleDownloads(()  => dlsOpen ? hideDls() : showDls());
+
+  // Atlas text actions from right-click context menu
+  window.atlas.onHistoryInit(items => { items.forEach(h => tabHistory.set(h.url, h)); });
+  window.atlas.onHistoryUpdated(item => { tabHistory.set(item.url, item); });
+  window.atlas.onAtlasTextAction(async ({ action, selectedText, prompt }) => {
+    setMode('chat');
+    if (!studioOpen) await window.atlas.toggleStudio().then(v => { studioOpen = v; document.getElementById('studio').classList.toggle('open', v); document.getElementById('studio-btn').classList.toggle('on', v); });
+    addMsg('user', `[${action}: "${selectedText.slice(0, 80)}${selectedText.length > 80 ? '…' : ''}"]`);
+    showTyping();
+    document.getElementById('send-btn').disabled = true;
+    try {
+      const reply = await window.atlas.chat([{ role: 'user', content: prompt }], apiKey, activeProjectId);
+      hideTyping();
+      addMsg('assistant', reply);
+      if (activeConvId) autoSaveConv();
+    } catch (e) {
+      hideTyping();
+      addMsg('assistant', 'Error: ' + e.message);
+    } finally {
+      document.getElementById('send-btn').disabled = false;
+    }
+  });
+
+  // Load data async — failures here don't break the UI
+  Promise.all([
+    window.atlas.getSettings().then(s  => {
+      settings = s;
+      apiKey = s.apiKey
+        || s.envVars?.ANTHROPIC_API_KEY
+        || s.envVars?.CLAUDE_API_KEY
+        || s.envVars?.API_KEY
+        || localStorage.getItem('atlas_key')
+        || '';
+      if (localStorage.getItem('atlas_key') && !s.apiKey) {
+        settings.apiKey = localStorage.getItem('atlas_key');
+        localStorage.removeItem('atlas_key');
+        window.atlas.saveSettings(settings);
+      }
+      renderSettings();
+    }).catch(console.error),
+    window.atlas.getProjects().then(p  => { projects = p; renderProjectSel(); renderProjList(); }).catch(console.error),
+    window.atlas.getAvailableTools().then(t => { availableToolStatus = t; renderToolStatusList(); }).catch(console.error),
+    window.atlas.getConversations().then(c => { conversations = c; renderConvSel(); }).catch(console.error),
+  ]);
+});
+
+// ── Nav ─────────────────────────────────────────────────────────────────────
+// ── URL bar autocomplete ───────────────────────────────────────────────────────
+let suggestIdx = -1;
+
+function urlInput(val) {
+  if (val.length < 3) { hideUrlSuggest(); return; }
+  const q = val.toLowerCase();
+  const matches = Array.from(tabHistory.values())
+    .filter(h => h.url.toLowerCase().includes(q) || (h.title||'').toLowerCase().includes(q))
+    .sort((a,b) => b.lastVisitTime - a.lastVisitTime)
+    .slice(0, 8);
+  if (!matches.length) { hideUrlSuggest(); return; }
+  showUrlSuggest(matches);
+}
+
+function showUrlSuggest(items) {
+  const box = document.getElementById('url-suggest');
+  suggestIdx = -1;
+  box.innerHTML = '';
+  items.forEach((item, i) => {
+    const el = document.createElement('div'); el.className = 'url-sug-item'; el.dataset.idx = i;
+    let host = ''; try { host = new URL(item.url).hostname; } catch {}
+    const fav = host ? `<img src="https://www.google.com/s2/favicons?domain=${host}&sz=32" onerror="this.parentElement.textContent='🌐'">` : '🌐';
+    el.innerHTML = `<div class="url-sug-fav">${fav}</div><div class="url-sug-info"><div class="url-sug-title">${esc(item.title||item.url)}</div><div class="url-sug-url">${esc(item.url)}</div></div>`;
+    el.onmousedown = (e) => { e.preventDefault(); document.getElementById('url').value = item.url; hideUrlSuggest(); window.atlas.navigate(item.url); };
+    box.appendChild(el);
+  });
+  box.classList.add('show');
+  window.atlas.urlSuggestOpen();
+}
+
+function hideUrlSuggest() {
+  setTimeout(() => {
+    document.getElementById('url-suggest').classList.remove('show');
+    suggestIdx = -1;
+    window.atlas.urlSuggestClose();
+  }, 150);
+}
+
+function urlKey(e) {
+  const box = document.getElementById('url-suggest');
+  const items = box.querySelectorAll('.url-sug-item');
+  if (box.classList.contains('show') && items.length) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); suggestIdx = Math.min(suggestIdx+1, items.length-1); items.forEach((el,i) => el.classList.toggle('active', i===suggestIdx)); if (suggestIdx>=0) document.getElementById('url').value = items[suggestIdx].querySelector('.url-sug-url').textContent; return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); suggestIdx = Math.max(suggestIdx-1, -1); items.forEach((el,i) => el.classList.toggle('active', i===suggestIdx)); if (suggestIdx>=0) document.getElementById('url').value = items[suggestIdx].querySelector('.url-sug-url').textContent; return; }
+    if (e.key === 'Escape')    { hideUrlSuggest(); return; }
+  }
+  if (e.key === 'Enter') { hideUrlSuggest(); window.atlas.navigate(document.getElementById('url').value); document.getElementById('url').blur(); }
+}
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+function addTab(d) {
+  const el = document.createElement('div');
+  el.className = 'tab'; el.id = `t${d.id}`;
+  el.onclick = e => { if (!e.target.closest('.tab-x')) window.atlas.activateTab(d.id); };
+  el.innerHTML = `<div class="tab-fav" id="fav${d.id}"><i data-lucide="globe"></i></div>
+    <div class="tab-title" id="ttl${d.id}">${esc(d.title||'New Tab')}</div>
+    <div class="tab-x" onclick="window.atlas.closeTab(${d.id})"><i data-lucide="x"></i></div>`;
+  document.getElementById('tabs').appendChild(el);
+}
+function updateTab(d) {
+  const ttl = document.getElementById(`ttl${d.id}`); if (ttl && d.title) ttl.textContent = d.title;
+  if (d.url) {
+    try {
+      const host = new URL(d.url).hostname;
+      const fav = document.getElementById(`fav${d.id}`);
+      if (fav) fav.innerHTML = `<img src="https://www.google.com/s2/favicons?domain=${host}&sz=32" onerror="this.parentElement.innerHTML='<i data-lucide=\\'globe\\'></i>';lucide.createIcons();">`;
+    } catch {}
+    const active = document.querySelector('.tab.active');
+    if (active && active.id === `t${d.id}`) { currentUrl = d.url; document.getElementById('url').value = d.url; }
+  }
+}
+function activateTab(d) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById(`t${d.id}`)?.classList.add('active');
+  currentUrl = d.url || currentUrl;
+  if (d.url)   document.getElementById('url').value = d.url;
+  if (d.title) document.title = d.title + ' — Atlas';
+   if (findOpen) closeFind();
+}
+function removeTab(d) { document.getElementById(`t${d.id}`)?.remove(); }
+
+// ── KPI Bar ────────────────────────────────────────────────────────────────
+function initKpiBar() {
+  // Live clock — update every second
+  function tickClock() {
+    const now = new Date();
+    const formatted = now.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric', year:'numeric' })
+      + ' · ' + now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const el = document.getElementById('kpi-time');
+    if (el) el.textContent = formatted;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // System stats — update every 10s
+  async function updateStats() {
+    try {
+      const s = await window.atlas.getSystemStats();
+      const cpu = document.getElementById('kpi-cpu');
+      const mem = document.getElementById('kpi-mem');
+      if (cpu) cpu.textContent = `CPU ${s.cpuPercent}%`;
+      if (mem) mem.textContent = `Mem ${s.memPercent}%`;
+    } catch {}
+  }
+  updateStats();
+  setInterval(updateStats, 10000);
+
+  // Weather — routed through main process to avoid CORS
+  async function updateWeather() {
+    try {
+      const wx = await window.atlas.getWeather();
+      if (!wx) throw new Error('no data');
+      const icon = wx.code <= 1 ? '☀️' : wx.code <= 3 ? '⛅' : wx.code <= 49 ? '☁️' : wx.code <= 69 ? '🌧️' : wx.code <= 79 ? '❄️' : wx.code <= 82 ? '🌧️' : '⛈️';
+      const el = document.getElementById('kpi-weather');
+      if (el) el.innerHTML = `<span class="kpi-icon">${icon}</span> <span class="kpi-val">${wx.temp}°F ${esc(wx.city)}</span>`;
+    } catch {
+      const el = document.getElementById('kpi-weather');
+      if (el) el.innerHTML = `<span class="kpi-icon">🌤</span> <span class="kpi-val" style="color:var(--dim)">Weather unavailable</span>`;
+    }
+  }
+  updateWeather();
+  setInterval(updateWeather, 30 * 60 * 1000);
+}
+
+// ── Studio ──────────────────────────────────────────────────────────────────
+async function toggleStudio() {
+  studioOpen = await window.atlas.toggleStudio();
+  document.getElementById('studio').classList.toggle('open', studioOpen);
+  document.getElementById('studio-btn').classList.toggle('on', studioOpen);
+}
+function setMode(m) {
+  cancelNewProject(); cancelRename();
+  mode = m;
+  document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('on', el.dataset.mode === m));
+  document.getElementById('ctx-bar').style.display       = (m === 'settings' || m === 'tools' || m === 'history') ? 'none' : 'flex';
+  document.getElementById('chat-mode').style.display     = m === 'chat'     ? 'flex' : 'none';
+  document.getElementById('actions-mode').style.display  = m === 'actions'  ? 'flex' : 'none';
+  document.getElementById('tools-mode').style.display    = m === 'tools'    ? 'flex' : 'none';
+  document.getElementById('history-mode').style.display  = m === 'history'  ? 'flex' : 'none';
+  document.getElementById('settings-mode').style.display = m === 'settings' ? 'flex' : 'none';
+  if (m === 'tools')    { if (ghRepos.length === 0) loadGhRepos(); }
+  if (m === 'settings') { checkGoogleStatus(); loadToolStatus(); }
+  if (m === 'history')  loadHistory();
+}
+
+let envOpen = false;
+function toggleEnvVars() {
+  envOpen = !envOpen;
+  const sec = document.getElementById('env-section');
+  sec.style.display = envOpen ? 'flex' : 'none';
+  document.getElementById('env-chev').setAttribute('data-lucide', envOpen ? 'chevron-down' : 'chevron-right');
+  lucide.createIcons();
+}
+
+async function newProjectFromSettings() {
+  const id = `proj-${Date.now()}`;
+  const proj = { id, name: 'New Project', systemPrompt: '', createdAt: new Date().toISOString() };
+  projects = await window.atlas.saveProject(proj);
+  renderProjectSel(); renderProjList();
+  setTimeout(() => { toggleProjEdit(id); document.getElementById(`pn-${id}`)?.focus(); document.getElementById(`pn-${id}`)?.select(); }, 50);
+}
+
+// ── Projects ────────────────────────────────────────────────────────────────
+function renderProjectSel() {
+  const sel = document.getElementById('project-sel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">No Project</option>';
+  projects.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; if (p.id === activeProjectId) o.selected = true; sel.appendChild(o); });
+  if (cur) sel.value = cur;
+}
+async function changeProject(id) {
+  activeProjectId = id || null;
+  activeConvId = null; chatHistory = []; renderMessages();
+  conversations = await window.atlas.getConversations();
+  renderConvSel();
+}
+function showNewProjForm() {
+  document.getElementById('new-proj-row').style.display = 'flex';
+  const inp = document.getElementById('new-proj-name'); inp.value = ''; inp.focus();
+}
+function cancelNewProject() { document.getElementById('new-proj-row').style.display = 'none'; }
+function newProjKey(e) { if (e.key==='Enter') confirmNewProject(); if (e.key==='Escape') cancelNewProject(); }
+async function confirmNewProject() {
+  const name = document.getElementById('new-proj-name').value.trim();
+  cancelNewProject();
+  if (!name) return;
+  const proj = { id: `proj-${Date.now()}`, name, systemPrompt: '', createdAt: new Date().toISOString() };
+  projects = await window.atlas.saveProject(proj);
+  renderProjectSel(); renderProjList();
+  showToast(`Project "${proj.name}" created`);
+}
+
+async function refreshGitHubContext() {
+  const btn = document.getElementById('refresh-ctx-btn');
+  btn.style.opacity = '0.4';
+  btn.style.pointerEvents = 'none';
+  try {
+    // Clear the server-side GitHub file cache
+    await window.atlas.clearGhCache();
+    // Inject a system message so Claude knows context was refreshed
+    chatHistory.push({ role: 'user', content: '[System: GitHub context refreshed — latest file contents and SHAs are now loaded. You can proceed with the commit.]' });
+    showToast('GitHub context refreshed');
+    // Show confirmation in chat
+    const el = renderMessage('assistant', 'GitHub context refreshed ✓ — I now have the latest file contents and SHAs. Ready to proceed.');
+    document.getElementById('msgs').appendChild(el);
+    document.getElementById('msgs').scrollTop = 99999;
+    lucide.createIcons();
+  } catch (e) {
+    showToast('Refresh failed: ' + e.message);
+  } finally {
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+  }
+}
+const TOOL_DEFS = [
+  { id: 'github',    label: 'GitHub',        icon: '🔀' },
+  { id: 'slack',     label: 'Slack',         icon: '💬' },
+  { id: 'gmail',     label: 'Gmail',         icon: '📧' },
+  { id: 'calendar',  label: 'Calendar',      icon: '📅' },
+  { id: 'drive',     label: 'Drive',         icon: '📁' },
+  { id: 'hubspot',   label: 'HubSpot',       icon: '🤝' },
+  { id: 'render',    label: 'Render',        icon: '🚀' },
+  { id: 'neon',      label: 'Neon DB',       icon: '🗄️' },
+  { id: 'imessage',  label: 'iMessage',      icon: '💬' },
+  { id: 'memory',    label: 'Memory',        icon: '🧠' },
+];
+
+let availableToolStatus = []; // loaded from main process
+
+async function loadToolStatus() {
+  try {
+    availableToolStatus = await window.atlas.getAvailableTools();
+    renderToolStatusList();
+  } catch {}
+}
+
+function renderToolStatusList() {
+  const container = document.getElementById('tool-status-list');
+  if (!container) return;
+  container.innerHTML = '';
+  availableToolStatus.forEach(({ id, configured }) => {
+    const def = TOOL_DEFS.find(t => t.id === id); if (!def) return;
+    const row = document.createElement('div'); row.className = 'tool-status-row';
+    row.innerHTML = `
+      <div class="tool-dot ${configured ? 'ok' : 'off'}"></div>
+      <span class="tool-status-label">${def.icon} ${def.label}</span>
+      <span class="tool-status-note">${configured ? 'configured' : 'not configured'}</span>`;
+    container.appendChild(row);
+  });
+}
+
+function renderProjList() {
+  const container = document.getElementById('proj-list'); container.innerHTML = '';
+  projects.forEach(proj => {
+    const enabledTools = proj.tools || null; // null = all enabled
+    const el = document.createElement('div'); el.className = 'proj-item';
+    el.innerHTML = `
+      <div class="proj-header">
+        <span class="proj-name">${esc(proj.name)}</span>
+        <div class="proj-actions">
+          <button onclick="toggleProjEdit('${proj.id}')" title="Edit"><i data-lucide="pencil"></i></button>
+          <button onclick="deleteProjItem('${proj.id}')" title="Delete"><i data-lucide="trash-2"></i></button>
+        </div>
+      </div>
+      <div class="proj-edit" id="pe-${proj.id}" style="display:none">
+        <input class="proj-name-inp" id="pn-${proj.id}" value="${esc(proj.name)}" placeholder="Project name">
+        <textarea class="s-textarea" id="pp-${proj.id}" rows="4" placeholder="System instructions for this project…">${esc(proj.systemPrompt||'')}</textarea>
+        <input class="s-key-input" id="pneon-${proj.id}" value="${esc(proj.neonUrl||'')}" placeholder="Neon connection URL (optional — overrides global)" style="font-family:monospace;font-size:11px;" autocomplete="off">
+        <div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Active Tools</div>
+        <div class="proj-tool-grid" id="ptg-${proj.id}">
+          ${TOOL_DEFS.map(def => {
+            const status = availableToolStatus.find(t => t.id === def.id);
+            const configured = status?.configured ?? false;
+            const isOn = enabledTools === null ? true : (enabledTools || []).includes(def.id);
+            return `<div class="proj-tool-tag ${isOn ? 'on' : 'off'} ${!configured ? 'disabled' : ''}"
+              data-tool="${def.id}" onclick="toggleProjTool('${proj.id}', '${def.id}', this)">
+              ${def.icon} ${def.label}
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">Dimmed tools need credentials in env vars</div>
+        <button class="proj-save" onclick="saveProjItem('${proj.id}')">Save</button>
+      </div>`;
+    container.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+function toggleProjTool(projId, toolId, el) {
+  el.classList.toggle('on'); el.classList.toggle('off');
+}
+
+function getCheckedTools(projId) {
+  const grid = document.getElementById(`ptg-${projId}`);
+  if (!grid) return null;
+  const tags = [...grid.querySelectorAll('.proj-tool-tag:not(.disabled)')];
+  // If all enabled, store null (means "all")
+  const checked = tags.filter(t => t.classList.contains('on')).map(t => t.dataset.tool);
+  const all = tags.map(t => t.dataset.tool);
+  if (checked.length === all.length) return null;
+  return checked;
+}
+
+function toggleProjEdit(id) { const el = document.getElementById(`pe-${id}`); el.style.display = el.style.display === 'none' ? 'flex' : 'none'; if (el.style.display !== 'none') el.style.flexDirection = 'column'; }
+async function saveProjItem(id) {
+  const proj = projects.find(p => p.id === id); if (!proj) return;
+  proj.name = document.getElementById(`pn-${id}`).value.trim() || proj.name;
+  proj.systemPrompt = document.getElementById(`pp-${id}`).value;
+  proj.neonUrl = document.getElementById(`pneon-${id}`)?.value.trim() || null;
+  proj.tools = getCheckedTools(id);
+  projects = await window.atlas.saveProject(proj);
+  renderProjectSel(); renderProjList(); showToast('Project saved');
+}
+async function deleteProjItem(id) {
+  const proj = projects.find(p => p.id === id);
+  if (!confirm(`Delete project "${proj?.name}"?`)) return;
+  projects = await window.atlas.deleteProject(id);
+  if (activeProjectId === id) { activeProjectId = null; document.getElementById('project-sel').value = ''; }
+  renderProjectSel(); renderProjList();
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
+function renderConvSel() {
+  const sel = document.getElementById('conv-sel');
+  sel.innerHTML = '<option value="">New conversation</option>';
+  const filtered = conversations.filter(c => (c.projectId || null) === (activeProjectId || null));
+  filtered.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; if (c.id === activeConvId) o.selected = true; sel.appendChild(o); });
+}
+async function changeConversation(id) {
+  autoApproveReads = false; // Reset auto-approve on conversation switch
+  if (!id) { activeConvId = null; chatHistory = []; renderMessages(); return; }
+  const conv = await window.atlas.getConversation(id);
+  if (!conv) return;
+  activeConvId = id; chatHistory = [...(conv.messages || [])]; renderMessages();
+}
+async function newConversation() {
+  autoApproveReads = false; // Reset auto-approve on new conversation
+  activeConvId = null; chatHistory = []; renderMessages();
+  document.getElementById('conv-sel').value = '';
+  showToast('New conversation');
+}
+function showRenameForm() {
+  if (!activeConvId) { showToast('Start a conversation first'); return; }
+  const cur = conversations.find(c => c.id === activeConvId)?.name || '';
+  document.getElementById('rename-conv-row').style.display = 'flex';
+  const inp = document.getElementById('rename-conv-input'); inp.value = cur; inp.focus(); inp.select();
+}
+function cancelRename() { document.getElementById('rename-conv-row').style.display = 'none'; }
+function renameConvKey(e) { if (e.key==='Enter') confirmRename(); if (e.key==='Escape') cancelRename(); }
+async function confirmRename() {
+  const name = document.getElementById('rename-conv-input').value.trim();
+  cancelRename();
+  if (!name || !activeConvId) return;
+  const conv = await window.atlas.getConversation(activeConvId);
+  if (!conv) return;
+  conv.name = name; conv.updatedAt = new Date().toISOString();
+  await window.atlas.saveConversation(conv);
+  conversations = await window.atlas.getConversations();
+  renderConvSel(); showToast('Renamed');
+}
+async function autoSaveConv() {
+  const now = new Date().toISOString();
+  if (!activeConvId) {
+    const id = `conv-${Date.now()}`;
+    const d = new Date();
+    const name = `Chat — ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`;
+    const conv = { id, name, projectId: activeProjectId||null, messages: [...chatHistory], createdAt: now, updatedAt: now };
+    await window.atlas.saveConversation(conv);
+    activeConvId = id;
+  } else {
+    const conv = await window.atlas.getConversation(activeConvId);
+    if (conv) { conv.messages = [...chatHistory]; conv.updatedAt = now; await window.atlas.saveConversation(conv); }
+  }
+  conversations = await window.atlas.getConversations();
+  renderConvSel();
+  document.getElementById('conv-sel').value = activeConvId || '';
+}
+
+// ── Chat ────────────────────────────────────────────────────────────────────
+function renderMessages() {
+  const box = document.getElementById('msgs'); box.innerHTML = '';
+  if (!chatHistory.length) {
+    box.innerHTML = `<div id="empty"><div class="eico"><i data-lucide="message-circle"></i></div><strong>Ask Claude about this page</strong><span>Claude sees everything you're viewing</span></div>`;
+    lucide.createIcons(); return;
+  }
+  chatHistory.forEach(m => {
+    const el = renderMessage(m.role, m.content);
+    box.appendChild(el);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+function addMsg(role, content) {
+  chatHistory.push({ role, content });
+  document.getElementById('empty')?.remove();
+  const el  = renderMessage(role, content);
+  const box = document.getElementById('msgs');
+  box.appendChild(el); box.scrollTop = box.scrollHeight;
+}
+function showTyping() {
+  const box = document.getElementById('msgs');
+  const el = document.createElement('div'); el.id='typing'; el.className='msg assistant';
+  el.innerHTML = `<div class="mlabel">Claude</div><div class="bubble dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  box.appendChild(el); box.scrollTop = box.scrollHeight;
+}
+function hideTyping() { document.getElementById('typing')?.remove(); }
+
+// Merge consecutive same-role messages so the API always sees alternating roles
+function mergeRoles(messages) {
+  const merged = [];
+  for (const m of messages) {
+    if (merged.length && merged[merged.length - 1].role === m.role) {
+      merged[merged.length - 1].content += '\n\n' + m.content;
+    } else {
+      merged.push({ role: m.role, content: m.content });
+    }
+  }
+  return merged;
+}
+
+async function send() {
+  if (!apiKey) { alert('Add your API key first.'); return; }
+  const inp = document.getElementById('chat-in');
+  const txt = inp.value.trim(); if (!txt) return;
+  inp.value = ''; grow(inp);
+  addMsg('user', txt); showTyping();
+  document.getElementById('send-btn').disabled = true;
+  try {
+    const history = mergeRoles(chatHistory.slice(-20));
+    const reply = await window.atlas.chat(history, apiKey, activeProjectId);
+    hideTyping(); addMsg('assistant', reply);
+    await autoSaveConv();
+  } catch (e) {
+    hideTyping(); addMsg('assistant', 'Error: ' + (e.message || 'something went wrong'));
+  } finally { document.getElementById('send-btn').disabled = false; }
+}
+function chatKey(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+async function act(action) {
+  if (!apiKey) { alert('Add your API key first.'); return; }
+  const res = document.getElementById('aresult'); res.className='show'; res.innerHTML='<span class="spinner"></span>Running…';
+  try {
+    let r;
+    if (action==='summarize')  r = await window.atlas.summarize(apiKey, activeProjectId);
+    if (action==='extract')    r = await window.atlas.extract(apiKey, activeProjectId);
+    if (action==='explain')    r = await window.atlas.explain(apiKey, activeProjectId);
+    if (action==='writeEmail') r = await window.atlas.writeEmail(apiKey, activeProjectId);
+    res.textContent = r;
+  } catch (e) { res.textContent = 'Error: ' + (e.message||'something went wrong'); }
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+function renderSettings() {
+  const keyInp = document.getElementById('settings-api-key');
+  keyInp.value = settings.apiKey || apiKey || '';
+  document.getElementById('global-prompt').value = settings.globalSystemPrompt || '';
+  renderEnvList();
+  renderCardList();
+}
+
+// ── Saved Cards ──
+const NETWORK_ICONS = { visa:'💳', mastercard:'💳', amex:'💳', discover:'💳', card:'💳' };
+async function renderCardList() {
+  const container = document.getElementById('card-list'); if (!container) return;
+  container.innerHTML = '';
+  try {
+    const cards = await window.atlas.vaultGetCards();
+    cards.forEach(c => {
+      const row = document.createElement('div'); row.className = 'card-item';
+      row.innerHTML = `<span class="card-icon">${NETWORK_ICONS[c.network]||'💳'}</span>
+        <span class="card-last4">•••• ${esc(c.last4)}</span>
+        <span class="card-label">${esc(c.label)} · ${esc(c.network)}</span>
+        <button class="card-del" title="Delete"><i data-lucide="x"></i></button>`;
+      row.querySelector('.card-del').addEventListener('click', async () => {
+        await window.atlas.vaultDeleteCard(c.id);
+        renderCardList();
+        showToast('Card removed');
+      });
+      container.appendChild(row);
+    });
+    if (cards.length) lucide.createIcons();
+  } catch {}
+}
+
+async function showAddCardModal() {
+  await window.atlas.hideActiveView();
+  const overlay = document.createElement('div');
+  overlay.id = 'card-modal-overlay';
+  overlay.innerHTML = `<div class="card-modal">
+    <h3>Add payment card</h3>
+    <label>Card Number</label>
+    <input id="cm-number" type="tel" maxlength="19" placeholder="4242 4242 4242 4242" autocomplete="off">
+    <label>Expiry</label>
+    <input id="cm-expiry" type="tel" maxlength="5" placeholder="MM/YY" autocomplete="off">
+    <label>CVV</label>
+    <input id="cm-cvv" type="password" maxlength="4" placeholder="123" autocomplete="off">
+    <label>Cardholder Name</label>
+    <input id="cm-name" type="text" placeholder="Brian Morgan" autocomplete="off">
+    <label>Label</label>
+    <input id="cm-label" type="text" placeholder="e.g. Personal Visa">
+    <div class="card-note">Card data is encrypted (AES-256) and stored locally on this device.</div>
+    <div class="card-modal-btns">
+      <button class="cancel" id="cm-cancel">Cancel</button>
+      <button class="save" id="cm-save">Save Card</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Auto-format card number with spaces
+  document.getElementById('cm-number').addEventListener('input', e => {
+    const v = e.target.value.replace(/\D/g, '').slice(0, 16);
+    e.target.value = v.replace(/(.{4})/g, '$1 ').trim();
+  });
+  // Auto-format expiry with slash
+  document.getElementById('cm-expiry').addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+    if (v.length >= 2) v = v.slice(0,2) + '/' + v.slice(2);
+    e.target.value = v;
+  });
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeCardModal(); });
+  document.getElementById('cm-cancel').addEventListener('click', closeCardModal);
+  document.getElementById('cm-save').addEventListener('click', saveNewCard);
+  document.getElementById('cm-number').focus();
+}
+
+async function closeCardModal() {
+  document.getElementById('card-modal-overlay')?.remove();
+  await window.atlas.showActiveView();
+}
+
+async function saveNewCard() {
+  const number = document.getElementById('cm-number').value.replace(/\s/g, '');
+  const expiry = document.getElementById('cm-expiry').value.trim();
+  const cvv    = document.getElementById('cm-cvv').value.trim();
+  const name   = document.getElementById('cm-name').value.trim();
+  const label  = document.getElementById('cm-label').value.trim();
+
+  if (number.length < 13 || number.length > 16) { showToast('Invalid card number'); return; }
+  if (!/^\d{2}\/\d{2}$/.test(expiry)) { showToast('Expiry must be MM/YY'); return; }
+  if (!/^\d{3,4}$/.test(cvv)) { showToast('CVV must be 3-4 digits'); return; }
+  if (!name) { showToast('Cardholder name required'); return; }
+
+  try {
+    await window.atlas.vaultAddCard({ number, expiry, cvv, name, label });
+    closeCardModal();
+    renderCardList();
+    showToast('Card saved');
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+function renderEnvList() {
+  const container = document.getElementById('env-list'); container.innerHTML = '';
+  const entries = Object.entries(settings.envVars || {});
+  // Auto-open if there are vars
+  if (entries.length && !envOpen) toggleEnvVars();
+  entries.forEach(([k, v]) => {
+    const row = document.createElement('div'); row.className = 'env-row';
+    row.innerHTML = `<input class="env-key" value="${esc(k)}" placeholder="KEY" onchange="updateEnvKey('${esc(k)}',this.value)">
+      <input class="env-val" value="${esc(v)}" placeholder="value" onchange="updateEnvVal('${esc(k)}',this.value)">
+      <button class="env-del" onclick="deleteEnvVar('${esc(k)}')"><i data-lucide="x"></i></button>`;
+    container.appendChild(row);
+  });
+  lucide.createIcons();
+}
+function updateEnvKey(oldKey, newKey) {
+  const v = settings.envVars[oldKey]; delete settings.envVars[oldKey];
+  if (newKey.trim()) settings.envVars[newKey.trim()] = v;
+  renderEnvList();
+}
+function updateEnvVal(key, val) { if (settings.envVars[key] !== undefined) settings.envVars[key] = val; }
+function addEnvVar() {
+  if (!settings.envVars) settings.envVars = {};
+  let k = 'NEW_KEY'; let i = 1;
+  while (settings.envVars[k] !== undefined) k = `NEW_KEY_${i++}`;
+  settings.envVars[k] = ''; renderEnvList();
+}
+function deleteEnvVar(key) { delete settings.envVars[key]; renderEnvList(); }
+async function saveAllSettings() {
+  const newKey = document.getElementById('settings-api-key').value.trim();
+  if (newKey && !newKey.startsWith('•')) { settings.apiKey = newKey; apiKey = newKey; }
+  settings.globalSystemPrompt = document.getElementById('global-prompt').value;
+  await window.atlas.saveSettings(settings);
+  showToast('Settings saved');
+}
+
+// ── Find ─────────────────────────────────────────────────────────────────────
+function openFind()  { findOpen=true;  document.getElementById('find-bar').classList.add('open'); document.getElementById('find-input').focus(); document.getElementById('find-input').select(); }
+function closeFind() { findOpen=false; document.getElementById('find-bar').classList.remove('open'); document.getElementById('find-count').textContent=''; window.atlas.stopFind(); }
+function doFind(forward=true) { const t=document.getElementById('find-input').value; if(!t){document.getElementById('find-count').textContent='';return;} window.atlas.find(t,forward,false); }
+function findKey(e) { if(e.key==='Escape'){e.preventDefault();closeFind();} if(e.key==='Enter'){e.preventDefault();doFind(!e.shiftKey);} }
+
+// ── Downloads ─────────────────────────────────────────────────────────────────
+function showDls()     { dlsOpen=true;  document.getElementById('dl-tray').classList.add('open'); }
+function hideDls()     { dlsOpen=false; document.getElementById('dl-tray').classList.remove('open'); }
+function toggleDownloads() { dlsOpen?hideDls():showDls(); }
+function clearDls() { window.atlas.clearDownloads(); downloads={}; updateDlUI(); hideDls(); document.getElementById('dl-badge').classList.remove('show'); }
+function updateDlUI() {
+  const items = Object.values(downloads);
+  document.getElementById('dl-badge').classList.toggle('show', items.length > 0);
+  const container = document.getElementById('dl-items'); container.innerHTML = '';
+  items.slice().reverse().forEach(dl => {
+    const pct = dl.totalBytes > 0 ? Math.round(dl.receivedBytes/dl.totalBytes*100) : 0;
+    const icon = dl.state==='completed'?'file-check':dl.state==='progressing'?'download':'file-x';
+    const meta = dl.state==='completed'?'Done':dl.state==='progressing'?`${pct}%`:'Failed';
+    const el = document.createElement('div'); el.className='dl-item';
+    el.onclick = () => dl.savePath && window.atlas.openDownload(dl.savePath);
+    el.innerHTML = `<div class="dl-item-icon"><i data-lucide="${icon}"></i></div>
+      <div class="dl-info"><div class="dl-name">${esc(dl.filename)}</div><div class="dl-meta">${meta}</div>
+        ${dl.state==='progressing'?`<div class="dl-prog"><div class="dl-prog-bar" style="width:${pct}%"></div></div>`:''}
+      </div>
+      ${dl.savePath?`<button class="dl-show" onclick="event.stopPropagation();window.atlas.showInFolder(${JSON.stringify(dl.savePath)})" title="Show in Finder"><i data-lucide="folder-open"></i></button>`:''}`;
+    container.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+// ── Tools ─────────────────────────────────────────────────────────────────────
+const toolSections = {};
+function toggleToolSection(id) {
+  const body = document.getElementById(`${id}-body`);
+  const chev = document.getElementById(`${id}-chev`);
+  const open = body.classList.toggle('open');
+  chev.innerHTML = `<i data-lucide="${open ? 'chevron-down' : 'chevron-right'}"></i>`;
+  lucide.createIcons();
+}
+
+// ── Google Connect ─────────────────────────────────────────────────────────────
+async function connectGoogle() {
+  const btn    = document.getElementById('google-connect-btn');
+  const status = document.getElementById('google-status');
+  btn.textContent = 'Connecting…'; btn.disabled = true;
+  try {
+    console.log('[google] calling auth start…');
+    const r = await window.atlas.bridgeGoogleAuthStart();
+    console.log('[google] auth start result:', JSON.stringify(r));
+    if (r.error) throw new Error(r.error);
+    if (r.authUrl) {
+      console.log('[google] opening oauth window…');
+      const winResult = await window.atlas.openOAuthWindow(r.authUrl);
+      console.log('[google] window result:', JSON.stringify(winResult));
+      status.textContent = 'Sign in to Google in the popup…';
+      // Poll for connection
+      const poll = setInterval(async () => {
+        const s = await window.atlas.bridgeGoogleAuthStatus();
+        if (s.connected) {
+          clearInterval(poll);
+          status.textContent = '✓ Connected';
+          btn.textContent = 'Reconnect'; btn.disabled = false;
+          showToast('Google connected!');
+        }
+      }, 2000);
+      setTimeout(() => clearInterval(poll), 120000); // stop after 2min
+    }
+    if (r.connected) { status.textContent = '✓ Connected'; btn.textContent = 'Reconnect'; }
+  } catch (e) { status.textContent = 'Error: ' + e.message; btn.textContent = 'Retry'; }
+  btn.disabled = false;
+}
+
+async function checkGoogleStatus() {
+  try {
+    const r = await window.atlas.bridgeGoogleAuthStatus();
+    const status = document.getElementById('google-status');
+    const btn    = document.getElementById('google-connect-btn');
+    if (status) status.textContent = r.connected ? '✓ Connected' : '';
+    if (btn && r.connected) btn.textContent = 'Reconnect';
+  } catch {}
+}
+
+// ── Gmail Tools ────────────────────────────────────────────────────────────────
+async function loadGmail() {
+  const query = document.getElementById('gmail-query').value || 'is:unread';
+  const list  = document.getElementById('gmail-list');
+  list.innerHTML = '<div style="font-size:12px;color:var(--dim)">Loading…</div>';
+  try {
+    const r = await window.atlas.bridgeGmailInbox({ query, limit: 10 });
+    if (r.error) throw new Error(r.error);
+    list.innerHTML = '';
+    if (!r.messages.length) { list.innerHTML = '<div style="font-size:12px;color:var(--dim)">No messages</div>'; return; }
+    r.messages.forEach(m => {
+      const el = document.createElement('div');
+      el.style.cssText = 'padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:5px;cursor:pointer;';
+      el.innerHTML = `<div style="font-size:12px;font-weight:600;margin-bottom:2px">${esc(m.subject||'(no subject)')}</div>
+        <div style="font-size:11px;color:var(--dim)">${esc(m.from?.split('<')[0].trim()||m.from||'')} · ${esc(m.date||'')}</div>
+        <div style="font-size:11.5px;margin-top:4px;color:var(--text)">${esc((m.snippet||'').slice(0,100))}…</div>`;
+      list.appendChild(el);
+    });
+  } catch (e) { list.innerHTML = `<div style="font-size:12px;color:#f7768e">${esc(e.message)}</div>`; }
+}
+
+async function gmailSend() {
+  const to      = document.getElementById('gmail-to').value.trim();
+  const subject = document.getElementById('gmail-subject').value.trim();
+  const body    = document.getElementById('gmail-body').value.trim();
+  if (!to || !subject || !body) { showToast('Fill in To, Subject, and Body'); return; }
+  const res = document.getElementById('gmail-result');
+  res.className = 'tool-result show'; res.textContent = 'Sending…';
+  try {
+    const r = await window.atlas.bridgeGmailSend({ to, subject, body });
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.ok ? '✓ Sent' : 'Failed';
+    if (r.ok) { document.getElementById('gmail-to').value=''; document.getElementById('gmail-subject').value=''; document.getElementById('gmail-body').value=''; }
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── Calendar Tools ─────────────────────────────────────────────────────────────
+async function loadCalToday() {
+  const res = document.getElementById('cal-result');
+  res.className = 'tool-result show'; res.textContent = 'Loading…';
+  try {
+    const r = await window.atlas.bridgeCalendarToday();
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.events.length
+      ? r.events.map(e => `${new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} — ${e.summary}${e.location?'\n📍'+e.location:''}`).join('\n\n')
+      : 'No events today';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+async function loadCalUpcoming(days) {
+  const res = document.getElementById('cal-result');
+  res.className = 'tool-result show'; res.textContent = 'Loading…';
+  try {
+    const r = await window.atlas.bridgeCalendarUpcoming({ days });
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.events.length
+      ? r.events.map(e => `${new Date(e.start).toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})} ${new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} — ${e.summary}`).join('\n')
+      : 'No upcoming events';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── Drive Tools ────────────────────────────────────────────────────────────────
+async function driveSearch() {
+  const query   = document.getElementById('drive-query').value.trim(); if (!query) return;
+  const results = document.getElementById('drive-results');
+  const res     = document.getElementById('drive-result');
+  results.innerHTML = '<div style="font-size:12px;color:var(--dim)">Searching…</div>';
+  try {
+    const r = await window.atlas.bridgeDriveSearch({ query });
+    if (r.error) throw new Error(r.error);
+    results.innerHTML = '';
+    (r.files || []).forEach(f => {
+      const el = document.createElement('div');
+      el.style.cssText = 'padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;gap:8px;cursor:pointer;';
+      el.innerHTML = `<span style="font-size:12px;flex:1">${esc(f.name)}</span>
+        <button class="tool-btn" onclick="driveRead('${f.id}')" style="font-size:11px;padding:3px 8px">Read</button>`;
+      if (f.webViewLink) el.querySelector('span').onclick = () => window.atlas.navigate(f.webViewLink);
+      results.appendChild(el);
+    });
+    if (!r.files?.length) results.innerHTML = '<div style="font-size:12px;color:var(--dim)">No files found</div>';
+  } catch (e) { results.innerHTML = `<div style="font-size:12px;color:#f7768e">${esc(e.message)}</div>`; }
+}
+
+async function driveRead(fileId) {
+  const res = document.getElementById('drive-result');
+  res.className = 'tool-result show'; res.textContent = 'Reading…';
+  try {
+    const r = await window.atlas.bridgeDriveRead({ fileId });
+    if (r.error) throw new Error(r.error);
+    res.textContent = (r.content || '').slice(0, 2000) + (r.content?.length > 2000 ? '\n…(truncated)' : '');
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── Slack Tools ────────────────────────────────────────────────────────────────
+async function loadSlackChannels() {
+  const sel = document.getElementById('slack-channel-sel');
+  sel.innerHTML = '<option>Loading…</option>';
+  try {
+    const r = await window.atlas.bridgeSlackChannels();
+    if (r.error) throw new Error(r.error);
+    sel.innerHTML = '<option value="">Select channel…</option>';
+    r.channels.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = `#${c.name}${c.unread ? ` (${c.unread})` : ''}`;
+      sel.appendChild(o);
+    });
+  } catch (e) { sel.innerHTML = '<option>Error loading</option>'; showToast('Slack: ' + e.message); }
+}
+async function loadSlackHistory() {
+  const channel = document.getElementById('slack-channel-sel').value;
+  if (!channel) { showToast('Select a channel first'); return; }
+  const res = document.getElementById('slack-result');
+  res.className = 'tool-result show'; res.textContent = 'Loading…';
+  try {
+    const r = await window.atlas.bridgeSlackHistory({ channel, limit: 20 });
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.messages.map(m => `[${m.time}] ${m.text}`).join('\n') || 'No messages';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+async function slackSearch() {
+  const query = document.getElementById('slack-search-inp').value.trim(); if (!query) return;
+  const res = document.getElementById('slack-result');
+  res.className = 'tool-result show'; res.textContent = 'Searching…';
+  try {
+    const r = await window.atlas.bridgeSlackSearch({ query });
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.matches.length ? r.matches.map(m => `#${m.channel} [${m.time}]\n${m.text}`).join('\n\n') : 'No results';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+async function slackSend() {
+  const channel = document.getElementById('slack-channel-sel').value;
+  const text    = document.getElementById('slack-msg').value.trim();
+  if (!channel || !text) { showToast('Select a channel and enter a message'); return; }
+  const res = document.getElementById('slack-result');
+  res.className = 'tool-result show'; res.textContent = 'Sending…';
+  try {
+    const r = await window.atlas.bridgeSlackSend({ channel, text });
+    if (r.error) throw new Error(r.error);
+    res.textContent = '✓ Sent'; document.getElementById('slack-msg').value = '';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── HubSpot Tools ──────────────────────────────────────────────────────────────
+let hsSearchType = 'contacts';
+async function hsSearch() {
+  const query = document.getElementById('hs-search-inp').value.trim();
+  const res   = document.getElementById('hs-result');
+  res.className = 'tool-result show'; res.textContent = 'Searching…';
+  try {
+    if (hsSearchType === 'contacts') {
+      const r = await window.atlas.bridgeHsContacts({ query, limit: 10 });
+      if (r.error) throw new Error(r.error);
+      res.textContent = r.contacts.length ? r.contacts.map(c => `${c.firstname||''} ${c.lastname||''} <${c.email}>\n${c.company||''} · ${c.hs_lead_status||''}`).join('\n\n') : 'No contacts found';
+    } else {
+      const r = await window.atlas.bridgeHsDeals({ query, limit: 10 });
+      if (r.error) throw new Error(r.error);
+      res.textContent = r.deals.length ? r.deals.map(d => `${d.dealname}\nStage: ${d.dealstage} · ${d.amount ? '$'+d.amount : 'N/A'}`).join('\n\n') : 'No deals found';
+    }
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── iMessage Tools ─────────────────────────────────────────────────────────────
+async function imsgRead() {
+  const contact = document.getElementById('imsg-contact').value.trim(); if (!contact) return;
+  const res = document.getElementById('imsg-result');
+  res.className = 'tool-result show'; res.textContent = 'Reading…';
+  try {
+    const r = await window.atlas.bridgeIMessageRead({ contact, limit: 15 });
+    if (r.error) throw new Error(r.error);
+    res.textContent = r.messages.length ? r.messages.map(m => `[${m.sent_at}] ${m.is_from_me ? 'You' : contact}: ${m.text}`).join('\n') : 'No messages found';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+async function imsgSend() {
+  const contact = document.getElementById('imsg-contact').value.trim();
+  const message = document.getElementById('imsg-msg').value.trim();
+  if (!contact || !message) { showToast('Enter a contact and message'); return; }
+  const res = document.getElementById('imsg-result');
+  res.className = 'tool-result show'; res.textContent = 'Sending…';
+  try {
+    await window.atlas.bridgeIMessageSend({ recipient: contact, message });
+    res.textContent = '✓ Sent'; document.getElementById('imsg-msg').value = '';
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── GitHub Tools ──────────────────────────────────────────────────────────────
+let ghRepos = [], ghFileSha = null;
+
+async function loadGhRepos() {
+  const sel = document.getElementById('gh-repo');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    ghRepos = await window.atlas.ghListRepos();
+    sel.innerHTML = '<option value="">Select repo…</option>';
+    ghRepos.forEach(r => { const o = document.createElement('option'); o.value = r.full_name; o.textContent = r.full_name; sel.appendChild(o); });
+    lucide.createIcons();
+  } catch (e) { sel.innerHTML = '<option value="">Error loading repos</option>'; showToast('GitHub: ' + e.message); }
+}
+
+async function onRepoChange() {
+  const [owner, repo] = document.getElementById('gh-repo').value.split('/');
+  if (!owner || !repo) return;
+  const branchSel = document.getElementById('gh-branch');
+  branchSel.innerHTML = '<option>Loading…</option>';
+  try {
+    const branches = await window.atlas.ghGetBranches(owner, repo);
+    branchSel.innerHTML = branches.map(b => `<option>${b}</option>`).join('');
+  } catch { branchSel.innerHTML = '<option>main</option>'; }
+}
+
+async function ghRead() {
+  const [owner, repo] = document.getElementById('gh-repo').value.split('/');
+  const branch = document.getElementById('gh-branch').value;
+  const filePath = document.getElementById('gh-path').value.trim();
+  if (!owner || !repo || !filePath) { showToast('Select a repo and enter a file path'); return; }
+  const res = document.getElementById('gh-result');
+  res.className = 'tool-result show'; res.textContent = 'Reading…';
+  try {
+    const file = await window.atlas.ghGetFile(owner, repo, filePath, branch);
+    if (!file) { res.textContent = 'File not found'; return; }
+    ghFileSha = file.sha;
+    document.getElementById('gh-content').value = file.content;
+    res.textContent = `✓ Read ${filePath} (sha: ${file.sha.slice(0,7)})`;
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── Render Tools ───────────────────────────────────────────────────────────────
+async function loadRenderServices() {
+  const container = document.getElementById('render-services');
+  container.innerHTML = '<div style="font-size:12px;color:var(--dim)">Loading…</div>';
+  try {
+    const services = await window.atlas.renderGetServices();
+    container.innerHTML = '';
+    if (!services.length) { container.innerHTML = '<div style="font-size:12px;color:var(--dim)">No services found</div>'; return; }
+    for (const svc of services) {
+      const el = document.createElement('div'); el.className = 'service-item';
+      el.innerHTML = `<div class="service-dot ${svc.suspended ? 'suspended' : ''}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="service-name">${esc(svc.name)}</div>
+          ${svc.url ? `<div class="service-url">${esc(svc.url)}</div>` : ''}
+        </div>
+        <button class="tool-btn" onclick="deployService('${svc.id}','${esc(svc.name)}')">Deploy</button>
+        <button class="tool-btn" onclick="showDeploys('${svc.id}')"><i data-lucide="list"></i></button>`;
+      container.appendChild(el);
+    }
+    lucide.createIcons();
+  } catch (e) { container.innerHTML = `<div style="font-size:12px;color:#f7768e">${esc(e.message)}</div>`; }
+}
+
+async function deployService(id, name) {
+  if (!confirm(`Trigger deploy for ${name}?`)) return;
+  try {
+    const r = await window.atlas.renderTriggerDeploy(id);
+    showToast(r.status < 300 ? `Deploy triggered for ${name}` : `Deploy failed (${r.status})`);
+  } catch (e) { showToast('Deploy error: ' + e.message); }
+}
+
+async function showDeploys(serviceId) {
+  try {
+    const deploys = await window.atlas.renderGetDeploys(serviceId);
+    if (!deploys.length) { showToast('No deploys found'); return; }
+    const summary = deploys.map(d => `${d.status.toUpperCase()} — ${d.commit || 'no message'} (${new Date(d.createdAt).toLocaleString()})`).join('\n');
+    alert(summary);
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+// ── Neon Tools ─────────────────────────────────────────────────────────────────
+async function runNeonQuery() {
+  const sql = document.getElementById('neon-sql').value.trim();
+  if (!sql) return;
+  const res = document.getElementById('neon-result');
+  res.className = 'tool-result show'; res.textContent = 'Running…';
+  try {
+    const r = await window.atlas.neonQuery(sql);
+    res.textContent = r.rowCount === 0 ? `OK — 0 rows` : JSON.stringify(r.rows, null, 2);
+  } catch (e) { res.textContent = 'Error: ' + e.message; }
+}
+
+// ── Memory Tools ───────────────────────────────────────────────────────────────
+function renderMemoryList(memories) {
+  const container = document.getElementById('memory-list');
+  container.innerHTML = '';
+  if (!memories.length) { container.innerHTML = '<div style="font-size:12px;color:var(--dim);text-align:center;padding:8px">No memories found</div>'; return; }
+  memories.forEach(m => {
+    const el = document.createElement('div'); el.className = 'memory-item';
+    el.innerHTML = `<div style="flex:1;min-width:0">
+      <div class="memory-content">${esc(m.content.slice(0, 200))}${m.content.length > 200 ? '…' : ''}</div>
+      <div class="memory-meta">${m.source} · ${new Date(m.created_at).toLocaleDateString()}</div>
+    </div>
+    <button class="memory-del" onclick="deleteMemoryUI(${m.id}, this.closest('.memory-item'))" title="Delete"><i data-lucide="trash-2"></i></button>`;
+    container.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+async function searchMemoriesUI() {
+  const q = document.getElementById('memory-search-inp').value.trim();
+  if (!q) return;
+  try { renderMemoryList(await window.atlas.memorySearch(q, activeProjectId)); }
+  catch (e) { showToast('Memory search error: ' + e.message); }
+}
+
+async function saveMemoryUI() {
+  const content = document.getElementById('memory-save-inp').value.trim();
+  if (!content) return;
+  try {
+    await window.atlas.memorySave(content, activeProjectId, 'manual');
+    document.getElementById('memory-save-inp').value = '';
+    showToast('Memory saved');
+    loadRecentMemories();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function loadRecentMemories() {
+  try { renderMemoryList(await window.atlas.memoryRecent(activeProjectId)); }
+  catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function deleteMemoryUI(id, el) {
+  try { await window.atlas.memoryDelete(id); el?.remove(); showToast('Deleted'); }
+  catch (e) { showToast('Error: ' + e.message); }
+}
+
+// ── Markdown ──────────────────────────────────────────────────────────────────
+function md(text) {
+  // Escape HTML first, then apply markdown
+  let s = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Code blocks (``` ... ```)
+  s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+    `<pre><code${lang ? ` class="lang-${lang}"` : ''}>${code.trim()}</code></pre>`);
+
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold + italic
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>');
+  s = s.replace(/__(.+?)__/g,          '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g,          '<em>$1</em>');
+  s = s.replace(/_([^_]+)_/g,          '<em>$1</em>');
+
+  // Headers
+  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  s = s.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+  s = s.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+
+  // Blockquotes
+  s = s.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // HR
+  s = s.replace(/^---+$/gm, '<hr>');
+
+  // Unordered lists
+  s = s.replace(/(^[\*\-] .+$(\n^[\*\-] .+$)*)/gm, match => {
+    const items = match.split('\n').map(l => `<li>${l.replace(/^[\*\-] /, '')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Ordered lists
+  s = s.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, match => {
+    const items = match.split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Links
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+  // Paragraphs — wrap lines not already wrapped in block elements
+  s = s.split('\n').map(line => {
+    if (/^<(h[1-3]|ul|ol|li|pre|blockquote|hr)/.test(line) || line.trim() === '') return line;
+    return `<p>${line}</p>`;
+  }).join('\n');
+
+  // Clean up empty paragraphs
+  s = s.replace(/<p><\/p>/g, '');
+  s = s.replace(/<p>\s*(<(?:ul|ol|pre|blockquote|h[1-3]|hr))/g, '$1');
+
+  return s;
+}
+
+// ── P4: Universal Action Block System ─────────────────────────────────────────
+const pendingActions = new Map(); // cardId → action object
+
+function parseActionBlock(text) {
+  const match = text.match(/```action\n([\s\S]*?)```/);
+  if (!match) return null;
+  const raw = match[1].trim();
+
+  // Try JSON first (Claude sometimes outputs {"type":"gh_read",...})
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.type) return parsed;
+    } catch (_) { /* fall through to YAML-style parse */ }
+  }
+
+  const obj = {};
+  raw.split('\n').forEach(l => {
+    const colon = l.indexOf(':');
+    if (colon < 0) return;
+    const k = l.slice(0, colon).trim().replace(/^["']|["']$/g, '');
+    let v = l.slice(colon + 1).trim();
+    // Strip matched surrounding quotes only (e.g. "value" or 'value'), and trailing commas
+    v = v.replace(/,\s*$/, '');
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'") && v.length > 1)) {
+      v = v.slice(1, -1);
+    }
+    if (k) obj[k] = v;
+  });
+  if (!obj.type) return null;
+  return obj;
+}
+
+function parseCommitBlock(text) {
+  const match = text.match(/```commit\n([\s\S]*?)```/);
+  if (!match) return null;
+  const block = match[1];
+
+  // Extract content: field (full file rewrite — everything after "content:\n")
+  const contentMatch = block.match(/^content:\n([\s\S]*)$/m);
+  const content = contentMatch ? contentMatch[1] : null;
+
+  // Parse header fields from top lines (stop at find:/replace:/content:)
+  const obj = { type: 'gh_commit' };
+  const lines = block.split('\n');
+  let findStart = -1, replaceStart = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    // Only match top-level fields at column 0 (no leading spaces)
+    const hdr = l.match(/^(owner|repo|branch|path|message):\s*(.+)/);
+    if (hdr) { obj[hdr[1]] = hdr[2].trim(); continue; }
+    if (/^find:\s*/i.test(l) && findStart < 0)       { findStart = i; continue; }
+    if (/^replace:\s*/i.test(l) && replaceStart < 0)  { replaceStart = i; continue; }
+  }
+
+  // find: extends from the find line to the line before replace:
+  // replace: extends from the replace line to end of block
+  if (findStart >= 0 && replaceStart > findStart) {
+    const findFirstLine = lines[findStart].replace(/^find:\s*/i, '');
+    const findLines = [findFirstLine, ...lines.slice(findStart + 1, replaceStart)];
+    obj.find = findLines.join('\n').trim();
+
+    const replaceFirstLine = lines[replaceStart].replace(/^replace:\s*/i, '');
+    const replaceLines = [replaceFirstLine, ...lines.slice(replaceStart + 1)];
+    obj.replace = replaceLines.join('\n').trim();
+  }
+
+  if (!obj.owner || !obj.repo || !obj.path || !obj.message) return null;
+  if (content) obj.content = content;
+  return obj;
+}
+
+function buildActionCardHTML(action, cardId) {
+  const typeLabels = {
+    gh_commit:      { label: 'GitHub Commit',    icon: 'git-commit',     cls: '' },
+    gh_read:        { label: 'Read File',         icon: 'file-text',      cls: '' },
+    slack_send:     { label: 'Send Slack Msg',   icon: 'hash',           cls: 'action-card-slack' },
+    gmail_send:     { label: 'Send Email',        icon: 'mail',           cls: 'action-card-gmail' },
+    hs_note:        { label: 'HubSpot Note',      icon: 'users',          cls: 'action-card-hubspot' },
+    hs_contact:     { label: 'HubSpot Contact',   icon: 'user-plus',      cls: 'action-card-hubspot' },
+    render_deploy:  { label: 'Deploy to Render',  icon: 'rocket',         cls: 'action-card-render' },
+    render_logs:    { label: 'Render Build Logs', icon: 'scroll-text',    cls: 'action-card-render' },
+    imessage_send:  { label: 'Send iMessage',     icon: 'message-square', cls: 'action-card-imessage' },
+    neon_query:     { label: 'Neon DB Query',     icon: 'database',       cls: 'action-card-neon' },
+  };
+  const meta = typeLabels[action.type] || { label: action.type, icon: 'zap', cls: '' };
+  let details = '';
+  switch (action.type) {
+    case 'gh_read':
+      details = `<div class="commit-card-repo">${esc(action.owner)}/${esc(action.repo)}</div><div class="commit-card-msg">${esc(action.path)}</div><div style="font-size:11px;color:var(--dim);margin-bottom:10px">branch: ${esc(action.branch||'main')}</div>`;
+      break;
+    case 'gh_commit':
+      details = `<div class="commit-card-repo">${esc(action.owner)}/${esc(action.repo)} &rarr; ${esc(action.branch||'main')}</div><div class="commit-card-msg">"${esc(action.message)}"</div><div style="font-size:11px;color:var(--dim);margin-bottom:10px">${esc(action.path)}</div>`;
+      break;
+    case 'slack_send':
+      details = `<div class="commit-card-repo">${esc(action.channel)}</div><div class="commit-card-msg">${esc((action.text||''). slice(0,200))}</div>`;
+      break;
+    case 'gmail_send':
+      details = `<div class="commit-card-repo">To: ${esc(action.to)}</div><div class="commit-card-msg">${esc(action.subject)}</div>`;
+      break;
+    case 'hs_note':
+      details = `<div class="commit-card-repo">Contact ID: ${esc(action.contactId)}</div><div class="commit-card-msg">${esc((action.note||''). slice(0,200))}</div>`;
+      break;
+    case 'hs_contact':
+      details = `<div class="commit-card-repo">${esc(action.email)}</div><div class="commit-card-msg">${esc([action.firstname,action.lastname].filter(Boolean).join(' '))} &middot; ${esc(action.company||'')}</div>`;
+      break;
+    case 'render_deploy':
+      details = `<div class="commit-card-repo">${esc(action.serviceName||action.serviceId)}</div><div class="commit-card-msg">Trigger new deployment</div>`;
+      break;
+    case 'render_logs':
+      details = `<div class="commit-card-repo">${esc(action.serviceName||action.serviceId)}</div><div class="commit-card-msg">Fetch build logs${action.deployId ? ` (${action.deployId})` : ' (latest failed)'}</div>`;
+      break;
+    case 'imessage_send':
+      details = `<div class="commit-card-repo">To: ${esc(action.to)}</div><div class="commit-card-msg">${esc((action.message||''). slice(0,200))}</div>`;
+      break;
+    case 'neon_query':
+      details = `<div class="commit-card-msg" style="font-family:monospace;font-size:12px">${esc((action.sql||''). slice(0,200))}</div>`;
+      break;
+    default:
+      details = `<div class="commit-card-msg">${esc(JSON.stringify(action))}</div>`;
+  }
+  return `<div class="commit-card ${meta.cls}" id="${cardId}">
+    <div class="commit-card-title"><i data-lucide="${meta.icon}"></i> ${esc(meta.label)}</div>
+    ${details}
+    <div class="commit-card-btns">
+      <button class="commit-approve" onclick="approveAction('${cardId}')">Approve</button>
+      <button class="commit-cancel"  onclick="cancelAction('${cardId}')">Cancel</button>
+      ${SAFE_ACTION_TYPES.has(action.type) ? `<button class="commit-approve-all" onclick="approveAllReads('${cardId}')">Approve All Reads</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function executeAction(action) {
+  switch (action.type) {
+    case 'gh_read': {
+      const file = await window.atlas.bridgeGhRead({ owner: action.owner, repo: action.repo, path: action.path, branch: action.branch || 'main' });
+      if (file.error) throw new Error(file.error);
+      const injection = `[File: ${action.path} (sha:${file.sha})]\n\`\`\`\n${file.content}\n\`\`\``;
+      chatHistory.push({ role: 'user', content: injection });
+      return `✓ Loaded ${action.path} (${file.content.split('\n').length} lines)`;
+    }
+    case 'gh_commit': {
+      const file = await window.atlas.bridgeGhRead({ owner: action.owner, repo: action.repo, path: action.path, branch: action.branch||'main' });
+      if (file.error) throw new Error(file.error);
+      // Normalize line endings everywhere
+      const fileContent = file.content.replace(/\r\n/g, '\n');
+      let newContent = fileContent;
+      if (action.content) {
+        // Full file rewrite
+        newContent = action.content.replace(/\r\n/g, '\n');
+      } else if (action.find && action.replace !== undefined) {
+        const find = action.find.replace(/\r\n/g, '\n');
+        const repl = action.replace.replace(/\r\n/g, '\n');
+        if (fileContent.includes(find)) {
+          // Exact match
+          newContent = fileContent.replace(find, repl);
+        } else {
+          // Fuzzy match: collapse whitespace differences per line
+          const normLine = s => s.split('\n').map(l => l.trimEnd()).join('\n');
+          const normFile = normLine(fileContent);
+          const normFind = normLine(find);
+          if (normFile.includes(normFind)) {
+            // Find the matching region in the original file by line
+            const findLines = normFind.split('\n');
+            const fileLines = fileContent.split('\n');
+            let startIdx = -1;
+            for (let i = 0; i <= fileLines.length - findLines.length; i++) {
+              let match = true;
+              for (let j = 0; j < findLines.length; j++) {
+                if (fileLines[i + j].trimEnd() !== findLines[j]) { match = false; break; }
+              }
+              if (match) { startIdx = i; break; }
+            }
+            if (startIdx >= 0) {
+              const before = fileLines.slice(0, startIdx);
+              const after  = fileLines.slice(startIdx + findLines.length);
+              newContent = [...before, ...repl.split('\n'), ...after].join('\n');
+            } else {
+              throw new Error(`Could not locate "${find.slice(0,80)}…" in file (fuzzy match failed)`);
+            }
+          } else {
+            throw new Error(`Could not find "${find.slice(0,80)}…" in file — the file may have changed since it was read`);
+          }
+        }
+      }
+      const r = await window.atlas.bridgeGhWrite({ owner:action.owner, repo:action.repo, path:action.path, content:newContent, sha:file.sha, message:action.message, branch:action.branch||'main' });
+      if (!r.ok) throw new Error(r.error||'Commit failed');
+      return `✓ Committed — ${r.sha?.slice(0,7)}`;
+    }
+    case 'slack_send': {
+      let channel = action.channel;
+      if (channel.startsWith('#')) { const chans = await window.atlas.bridgeSlackChannels(); const found = chans.channels?.find(c => c.name===channel.slice(1)); if (found) channel=found.id; }
+      const r = await window.atlas.bridgeSlackSend({ channel, text:action.text });
+      if (r.error) throw new Error(r.error);
+      return `✓ Sent to ${action.channel}`;
+    }
+    case 'gmail_send': {
+      const r = await window.atlas.bridgeGmailSend({ to:action.to, subject:action.subject, body:action.body });
+      if (r.error) throw new Error(r.error);
+      return `✓ Email sent to ${action.to}`;
+    }
+    case 'hs_note': {
+      const r = await window.atlas.bridgeHsNoteCreate({ contactId:action.contactId, note:action.note });
+      if (r.error) throw new Error(r.error);
+      return `✓ Note logged on contact ${action.contactId}`;
+    }
+    case 'hs_contact': {
+      const r = await window.atlas.bridgeHsContactCreate({ email:action.email, firstname:action.firstname, lastname:action.lastname, company:action.company });
+      if (r.error) throw new Error(r.error);
+      return `✓ Contact created: ${action.email}`;
+    }
+    case 'render_deploy': {
+      const r = await window.atlas.bridgeRenderDeploy({ serviceId:action.serviceId });
+      if (!r.ok) throw new Error(r.error||'Deploy failed');
+      return `✓ Deploy triggered — ${r.deployId}`;
+    }
+    case 'render_logs': {
+      const r = await window.atlas.bridgeRenderLogs({ serviceId:action.serviceId, deployId:action.deployId });
+      if (r.error) throw new Error(r.error);
+      const logText = r.logs || (r.events ? r.events.map(e => `[${e.type}] ${e.details || JSON.stringify(e)}`).join('\n') : 'No logs available');
+      // Inject logs into chat so Claude can read them
+      const injection = `[Render build logs for deploy ${r.deployId}${r.note ? ' (' + r.note + ')' : ''}]\n\`\`\`\n${logText.slice(-8000)}\n\`\`\``;
+      chatHistory.push({ role: 'user', content: injection });
+      const lineCount = logText.split('\n').length;
+      return `✓ Loaded ${lineCount} lines of build logs`;
+    }
+    case 'imessage_send': {
+      await window.atlas.bridgeIMessageSend({ recipient:action.to, message:action.message });
+      return `✓ iMessage sent to ${action.to}`;
+    }
+    case 'neon_query': {
+      const proj = projects.find(p => p.id === activeProjectId);
+      const neonUrl = proj?.neonUrl || undefined;
+      // Replace smart/curly quotes with straight quotes (Claude sometimes outputs Unicode quotes)
+      const sql = action.sql.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
+      const r = await window.atlas.bridgeNeonQuery({ sql, ...(neonUrl ? { neonUrl } : {}) });
+      if (r.error) throw new Error(r.error);
+      return `✓ ${r.rowCount} row${r.rowCount!==1?'s':''} returned\n${JSON.stringify(r.rows?.slice(0,5),null,2)}`;
+    }
+    default: throw new Error(`Unknown action type: ${action.type}`);
+  }
+}
+
+async function approveAction(cardId) {
+  const card = document.getElementById(cardId);
+  const action = pendingActions.get(cardId);
+  if (!action || !card) return;
+  const btn = card.querySelector('.commit-approve');
+  btn.disabled = true; btn.textContent = 'Working…';
+  try {
+    const resultMsg = await executeAction(action);
+    const res = document.createElement('div');
+    res.className = 'commit-result ok'; res.textContent = resultMsg;
+    card.querySelector('.commit-card-btns').replaceWith(res);
+    chatHistory.push({ role:'user', content:`[System: Action completed — ${resultMsg}]` });
+    pendingActions.delete(cardId);
+    if (activeConvId) autoSaveConv();
+
+    // Auto-continue after any approved action so Claude keeps going without "OK"
+    setTimeout(() => continueSend(), 300);
+  } catch (e) {
+    const res = document.createElement('div');
+    res.className = 'commit-result err'; res.textContent = `✗ ${e.message}`;
+    card.querySelector('.commit-card-btns').replaceWith(res);
+    btn.disabled = false; btn.textContent = 'Retry';
+  }
+}
+
+// Silent continue — triggers Claude to respond without a visible user message
+async function continueSend() {
+  if (!apiKey) return;
+  showTyping();
+  document.getElementById('send-btn').disabled = true;
+  try {
+    const history = mergeRoles(chatHistory.slice(-30));
+    const reply = await window.atlas.chat(history, apiKey, activeProjectId);
+    hideTyping();
+    addMsg('assistant', reply);
+    if (activeConvId) autoSaveConv();
+  } catch (e) {
+    hideTyping();
+    addMsg('assistant', 'Error: ' + e.message);
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+async function approveAllReads(cardId) {
+  autoApproveReads = true;
+  showToast('Auto-approving reads for this conversation');
+  await approveAction(cardId);
+}
+
+function cancelAction(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const res = document.createElement('div');
+  res.className = 'commit-result'; res.style.color = 'var(--dim)'; res.textContent = 'Cancelled';
+  card.querySelector('.commit-card-btns')?.replaceWith(res);
+  pendingActions.delete(cardId);
+}
+
+function renderMessage(role, content) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  if (role === 'assistant') {
+    const commit = parseCommitBlock(content);
+    const action = !commit ? parseActionBlock(content) : null;
+    const anyAction = commit || action;
+    if (anyAction) {
+      const cardId = `ac-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+      const displayText = content.replace(/```commit\n[\s\S]*?```/,'').replace(/```action\n[\s\S]*?```/,'').trim();
+
+      // Auto-approve safe read-only actions when flag is set
+      if (autoApproveReads && SAFE_ACTION_TYPES.has(anyAction.type)) {
+        el.innerHTML = `<div class="mlabel">Claude</div>${displayText?`<div class="bubble">${md(displayText)}</div>`:''}
+          <div class="auto-approved"><span class="ok">⟳</span> Auto-executing ${esc(anyAction.type)}…</div>`;
+        // Execute async — update the element when done
+        (async () => {
+          try {
+            const resultMsg = await executeAction(anyAction);
+            const resEl = el.querySelector('.auto-approved');
+            if (resEl) { resEl.innerHTML = `<span class="ok">✓</span> ${esc(resultMsg)}`; }
+            chatHistory.push({ role:'user', content:`[System: Action completed — ${resultMsg}]` });
+            if (activeConvId) autoSaveConv();
+            setTimeout(() => continueSend(), 300);
+          } catch (e) {
+            const resEl = el.querySelector('.auto-approved');
+            if (resEl) { resEl.innerHTML = `<span style="color:#f7768e">✗</span> ${esc(e.message)}`; }
+          }
+        })();
+        return el;
+      }
+
+      pendingActions.set(cardId, anyAction);
+      el.innerHTML = `<div class="mlabel">Claude</div>${displayText?`<div class="bubble">${md(displayText)}</div>`:''} ${buildActionCardHTML(anyAction, cardId)}`;
+      lucide.createIcons();
+      return el;
+    }
+    el.innerHTML = `<div class="mlabel">Claude</div><div class="bubble">${md(content)}</div>`;
+  } else {
+    el.innerHTML = `<div class="mlabel">You</div><div class="bubble">${esc(content)}</div>`;
+  }
+  return el;
+}
+
+// ── Browser History ────────────────────────────────────────────────────────────
+let historyItems = [];
+
+async function loadHistory() {
+  const list = document.getElementById('history-list');
+  list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">Loading…</div>';
+  try {
+    historyItems = await window.atlas.getHistory();
+    renderHistory(historyItems);
+  } catch (e) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">${esc(e.message)}</div>`;
+  }
+}
+
+function renderHistory(items) {
+  const list = document.getElementById('history-list');
+  list.innerHTML = '';
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--dim);font-size:12px">No history yet</div>';
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  items.forEach(item => {
+    const d = new Date(item.lastVisitTime || item.visitTime || Date.now());
+    const key = isToday(d) ? 'Today' : isYesterday(d) ? 'Yesterday' : d.toLocaleDateString([], { weekday:'long', month:'short', day:'numeric' });
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+  });
+
+  Object.entries(groups).forEach(([date, entries]) => {
+    const hdr = document.createElement('div'); hdr.className = 'hist-date-group'; hdr.textContent = date;
+    list.appendChild(hdr);
+    entries.forEach(item => {
+      const el = document.createElement('div'); el.className = 'hist-item';
+      el.onclick = () => window.atlas.navigate(item.url);
+      let host = ''; try { host = new URL(item.url).hostname; } catch {}
+      const faviconUrl = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : '';
+      const time = new Date(item.lastVisitTime || item.visitTime || 0).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      el.innerHTML = `
+        <div class="hist-fav">${faviconUrl ? `<img src="${faviconUrl}" onerror="this.parentElement.textContent='🌐'">` : '🌐'}</div>
+        <div class="hist-info">
+          <div class="hist-title">${esc(item.title || item.url)}</div>
+          <div class="hist-url">${esc(item.url)}</div>
+        </div>
+        <div class="hist-time">${time}</div>`;
+      list.appendChild(el);
+    });
+  });
+}
+
+function filterHistory() {
+  const q = document.getElementById('history-search').value.toLowerCase();
+  if (!q) { renderHistory(historyItems); return; }
+  renderHistory(historyItems.filter(h => (h.title||'').toLowerCase().includes(q) || (h.url||'').toLowerCase().includes(q)));
+}
+
+async function clearHistory() {
+  if (!confirm('Clear all browsing history?')) return;
+  await window.atlas.clearHistory();
+  historyItems = [];
+  renderHistory([]);
+  showToast('History cleared');
+}
+
+function isToday(d)     { const n = new Date(); return d.toDateString() === n.toDateString(); }
+function isYesterday(d) { const y = new Date(); y.setDate(y.getDate()-1); return d.toDateString() === y.toDateString(); }
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function grow(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>

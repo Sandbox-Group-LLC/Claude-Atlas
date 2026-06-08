@@ -1,0 +1,59 @@
+{
+  "name": "claude-atlas",
+  "version": "1.0.0",
+  "description": "Claude-powered browser with vertical tabs and AI Studio panel",
+  "main": "main.js",
+  "scripts": {
+    "start": "./node_modules/.bin/electron .",
+    "build": "./node_modules/.bin/electron-builder --mac --dir",
+    "dist": "./node_modules/.bin/electron-builder --mac && rm -rf dist/mac-arm64"
+  },
+  "dependencies": {
+    "pg": "^8.11.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3",
+    "electron": "41.2.0"
+  },
+  "build": {
+    "appId": "com.atlas.browser",
+    "productName": "Atlas",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "dmg": {
+      "title": "Atlas",
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "page-preload.js",
+      "index.html",
+      "mcp-bridge.js",
+      "package.json",
+      "assets/**",
+      "node_modules/**"
+    ],
+    "extraResources": [],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**",
+      "node_modules/pg/**"
+    ]
+  },
+  "author": "Brian Morgan"
+}
