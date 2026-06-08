@@ -98,7 +98,12 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6';
 // Studio chat uses the native tool-use agentic engine (ported from ForgeOS "Frank").
 const CHAT_MODEL = 'claude-opus-4-8';
 const MAX_CHAT_ROUNDS = 20;
-const READ_ONLY_CHAT_TOOLS = new Set(['gh_read', 'render_logs', 'neon_query']);
+const READ_ONLY_CHAT_TOOLS = new Set(['gh_read', 'render_logs', 'neon_query', 'recall_tool_result']);
+// Context-cost controls (the lever that prevents multi-round Opus loops from
+// re-billing large tool results on every round, and big histories every turn).
+const STUB_SIZE = 4000;          // tool results bigger than this are stub candidates
+const STUB_AGE  = 2;             // ...once they're this many rounds old (most recent 2 rounds keep full fidelity)
+const HISTORY_CHAR_BUDGET = 48000; // ~12k tokens of cross-turn history carried into a new turn
 const CHROME_UA    = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const os = require('os');
 const crypto = require('crypto');
@@ -510,7 +515,7 @@ async function buildSystemPrompt(projectId, page, lastUserMessage = '', nativeTo
   // legacy ```action/```commit prompt scaffolding and give a short capability note.
   const toolInstructions = nativeTools
     ? (availableTools.length
-        ? `\n\n---\n\nYou have native tools available: ${availableTools.join(', ')}. Call them directly via tool use — do NOT paste fenced action/commit blocks. Atlas shows the user an approval card before any write or side-effecting action (commits, sends, deploys); read-only tools (gh_read, render_logs, neon_query) run automatically. Always gh_read a file before you gh_commit to it so you have the current content and SHA. Never print code in chat — make the change with gh_commit instead. Keep chat replies concise; do the detailed work through tools.`
+        ? `\n\n---\n\nYou have native tools available: ${availableTools.join(', ')}. Call them directly via tool use — do NOT paste fenced action/commit blocks. Atlas shows the user an approval card before any write or side-effecting action (commits, sends, deploys); read-only tools (gh_read, render_logs, neon_query) run automatically. Always gh_read a file before you gh_commit to it so you have the current content and SHA. Never print code in chat — make the change with gh_commit instead. Keep chat replies concise; do the detailed work through tools.\n\nContext cost: large tool results (e.g. big file reads) are kept full for the most recent couple of rounds, then replaced with a "[Stubbed to save context …]" marker. That is expected — call recall_tool_result with the given call_id only if you genuinely need the bytes back. Conversation history across turns keeps only your text, not raw tool output — so summarize the key facts you learned in your reply (e.g. "githubHeaders is on line 1190"); that cheap summary survives where the raw 47KB read does not.`
         : '')
     : (availableTools.length > 0 ? `\n\n---\n\n${buildActionInstructions(availableTools)}` : '');
 
@@ -1138,6 +1143,12 @@ function buildChatTools(availableTools) {
     name: 'neon_query', description: 'Run a SQL query against the project\'s Neon Postgres database. SELECT only unless the user explicitly asks for a write.',
     input_schema: { type: 'object', properties: { sql: { type: 'string' } }, required: ['sql'] },
   });
+  // Always available: pull back a tool result that was stubbed to save context.
+  if (tools.length) tools.push({
+    name: 'recall_tool_result',
+    description: 'Pull back the full content of an earlier tool result that was stubbed to save context. When you see "[Stubbed to save context — … call_id=\"toolu_…\"]", call this with that call_id to retrieve the original content. Only call it if you actually need the bytes; otherwise leave the stub alone. Works only within the current turn.',
+    input_schema: { type: 'object', properties: { call_id: { type: 'string', description: 'the tool_use_id from the stub, e.g. toolu_01…' } }, required: ['call_id'] },
+  });
   return tools;
 }
 
@@ -1265,11 +1276,44 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
     const Client = Anthropic.default || Anthropic;
     const client = new Client({ apiKey: key });
 
-    // Seed with the renderer's text history; tool_use/tool_result blocks are appended
-    // within this turn only.
-    const conv = messages.map(m => ({ role: m.role, content: String(m.content) }));
+    // Cross-turn cost control: cap the carried history by characters (keeping the
+    // most recent messages), so a long conversation of large assistant texts isn't
+    // re-sent in full on every round of every future turn.
+    const trimmed = [];
+    let acc = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const len = String(messages[i].content).length;
+      if (acc + len > HISTORY_CHAR_BUDGET && trimmed.length) break;
+      trimmed.unshift({ role: messages[i].role, content: String(messages[i].content) });
+      acc += len;
+    }
+    while (trimmed.length && trimmed[0].role !== 'user') trimmed.shift();
+
+    // conv is the canonical full history for this turn; tool_use/tool_result blocks
+    // are appended as the loop runs and never persisted beyond it.
+    const conv = trimmed;
     let finalText = '';
     let autoApprove = false;
+
+    // Within-turn cost control: cache each tool result; stub stale large ones when
+    // rebuilding the outgoing messages so Opus doesn't re-bill a 47KB read every round.
+    const toolResultCache = new Map(); // tool_use_id → { round, content, toolName, policy }
+    const buildOutgoing = (currentRound) => conv.map(msg => {
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+      if (!msg.content.some(b => b && b.type === 'tool_result')) return msg;
+      return { role: 'user', content: msg.content.map(block => {
+        if (!block || block.type !== 'tool_result') return block;
+        const cached = toolResultCache.get(block.tool_use_id);
+        if (!cached || cached.policy === 'never') return block;
+        if (cached.content.length <= STUB_SIZE) return block;
+        if (currentRound - cached.round < STUB_AGE) return block;
+        return { type: 'tool_result', tool_use_id: block.tool_use_id,
+          content: `[Stubbed to save context — ${cached.toolName} returned ${cached.content.length} chars. Call recall_tool_result with call_id="${block.tool_use_id}" if you need it back.]` };
+      }) };
+    });
+
+    const callCounts = new Map(); // loop detection: name+input → consecutive count
+    let aborted = false;
 
     for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
       // Prompt caching: breakpoint on the system prompt and the last tool def, so
@@ -1281,7 +1325,7 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       try {
         stream = await client.messages.stream({
           model: CHAT_MODEL, max_tokens: 16000,
-          system: cachedSystem, tools: cachedTools, messages: conv,
+          system: cachedSystem, tools: cachedTools, messages: buildOutgoing(round),
         });
       } catch (e) {
         send({ type: 'error', error: e.message });
@@ -1305,6 +1349,20 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       const toolResults = [];
       for (const tu of toolBlocks) {
         send({ type: 'tool_start', tool: tu.name, input: tu.input });
+
+        // Loop detection: auto-stop if the exact same call repeats 3×.
+        const callKey = tu.name + ':' + JSON.stringify(tu.input || {});
+        const n = (callCounts.get(callKey) || 0) + 1;
+        callCounts.set(callKey, n);
+        if (n >= 3) {
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, is_error: true,
+            content: 'ABORTED: this exact tool call has run 3 times. Stop retrying — tell the user what is stuck and what you need from them.' });
+          send({ type: 'tool_error', tool: tu.name, error: 'repeated 3× — auto-stopped' });
+          aborted = true;
+          finalText = assistantText || finalText;
+          continue;
+        }
+
         const needsApproval = !READ_ONLY_CHAT_TOOLS.has(tu.name) && !autoApprove;
         if (needsApproval) {
           const approvalId = `apr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -1318,16 +1376,31 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
             continue;
           }
         }
+
         try {
-          const result = await executeChatTool(tu.name, tu.input, projectId);
-          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: String(result) });
-          send({ type: 'tool_done', tool: tu.name, result: String(result).split('\n')[0].slice(0, 160) });
+          let result, policy = 'normal';
+          if (tu.name === 'recall_tool_result') {
+            const cached = toolResultCache.get(tu.input?.call_id);
+            if (!cached) {
+              result = `recall_tool_result: no cached result for call_id="${tu.input?.call_id}". Results don't persist across turns — re-run the original tool for fresh data.`;
+            } else {
+              result = cached.content; policy = 'never'; cached.policy = 'never';
+              send({ type: 'tool_done', tool: tu.name, result: `recalled ${cached.toolName} (${cached.content.length} chars)` });
+            }
+          } else {
+            result = await executeChatTool(tu.name, tu.input, projectId);
+            send({ type: 'tool_done', tool: tu.name, result: String(result).split('\n')[0].slice(0, 160) });
+          }
+          const resultStr = String(result);
+          toolResultCache.set(tu.id, { round, content: resultStr, toolName: tu.name, policy });
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: resultStr });
         } catch (e) {
           toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Error: ${e.message}`, is_error: true });
           send({ type: 'tool_error', tool: tu.name, error: e.message });
         }
       }
       conv.push({ role: 'user', content: toolResults });
+      if (aborted) break;
     }
 
     send({ type: 'done', text: finalText });
