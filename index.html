@@ -341,8 +341,6 @@ svg.lucide { display:block; stroke-width:1.75; }
 .commit-cancel:hover  { color:var(--text); background:var(--hover); }
 .commit-approve-all { all:unset; -webkit-app-region:no-drag; padding:6px 10px; background:transparent; border:1px solid rgba(122,162,247,.3); color:var(--accent); border-radius:5px; font-size:11px; cursor:pointer; transition:.12s; white-space:nowrap; }
 .commit-approve-all:hover { background:var(--adim); border-color:var(--accent); }
-.auto-approved { font-size:12px; color:var(--dim); padding:4px 0; display:flex; align-items:center; gap:6px; }
-.auto-approved .ok { color:#9ece6a; }
 .commit-result  { font-size:12px; margin-top:8px; padding:6px 10px; border-radius:5px; background:var(--surface); overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; }
 .commit-result.ok  { color:#9ece6a; border:1px solid rgba(158,206,106,.3); }
 .commit-result.err { color:#f7768e; border:1px solid rgba(247,118,142,.3); }
@@ -772,8 +770,6 @@ let mode = 'chat', studioOpen = false, dlsOpen = false, findOpen = false;
 let downloads = {}, currentUrl = '', tabHistory = new Map();
 let settings = { globalSystemPrompt: '', envVars: {}, apiKey: '' };
 let projects = [], conversations = [];
-let autoApproveReads = false;
-const SAFE_ACTION_TYPES = new Set(['gh_read', 'render_logs', 'neon_query']);
 let activeProjectId = null, activeConvId = null;
 let toastTimer;
 
@@ -1174,14 +1170,12 @@ function renderConvSel() {
   filtered.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; if (c.id === activeConvId) o.selected = true; sel.appendChild(o); });
 }
 async function changeConversation(id) {
-  autoApproveReads = false; // Reset auto-approve on conversation switch
   if (!id) { activeConvId = null; chatHistory = []; renderMessages(); return; }
   const conv = await window.atlas.getConversation(id);
   if (!conv) return;
   activeConvId = id; chatHistory = [...(conv.messages || [])]; renderMessages();
 }
 async function newConversation() {
-  autoApproveReads = false; // Reset auto-approve on new conversation
   activeConvId = null; chatHistory = []; renderMessages();
   document.getElementById('conv-sel').value = '';
   showToast('New conversation');
@@ -2053,79 +2047,7 @@ function md(text) {
   return s;
 }
 
-// ── P4: Universal Action Block System ─────────────────────────────────────────
-const pendingActions = new Map(); // cardId → action object
-
-function parseActionBlock(text) {
-  const match = text.match(/```action\n([\s\S]*?)```/);
-  if (!match) return null;
-  const raw = match[1].trim();
-
-  // Try JSON first (Claude sometimes outputs {"type":"gh_read",...})
-  if (raw.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.type) return parsed;
-    } catch (_) { /* fall through to YAML-style parse */ }
-  }
-
-  const obj = {};
-  raw.split('\n').forEach(l => {
-    const colon = l.indexOf(':');
-    if (colon < 0) return;
-    const k = l.slice(0, colon).trim().replace(/^["']|["']$/g, '');
-    let v = l.slice(colon + 1).trim();
-    // Strip matched surrounding quotes only (e.g. "value" or 'value'), and trailing commas
-    v = v.replace(/,\s*$/, '');
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'") && v.length > 1)) {
-      v = v.slice(1, -1);
-    }
-    if (k) obj[k] = v;
-  });
-  if (!obj.type) return null;
-  return obj;
-}
-
-function parseCommitBlock(text) {
-  const match = text.match(/```commit\n([\s\S]*?)```/);
-  if (!match) return null;
-  const block = match[1];
-
-  // Extract content: field (full file rewrite — everything after "content:\n")
-  const contentMatch = block.match(/^content:\n([\s\S]*)$/m);
-  const content = contentMatch ? contentMatch[1] : null;
-
-  // Parse header fields from top lines (stop at find:/replace:/content:)
-  const obj = { type: 'gh_commit' };
-  const lines = block.split('\n');
-  let findStart = -1, replaceStart = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    // Only match top-level fields at column 0 (no leading spaces)
-    const hdr = l.match(/^(owner|repo|branch|path|message):\s*(.+)/);
-    if (hdr) { obj[hdr[1]] = hdr[2].trim(); continue; }
-    if (/^find:\s*/i.test(l) && findStart < 0)       { findStart = i; continue; }
-    if (/^replace:\s*/i.test(l) && replaceStart < 0)  { replaceStart = i; continue; }
-  }
-
-  // find: extends from the find line to the line before replace:
-  // replace: extends from the replace line to end of block
-  if (findStart >= 0 && replaceStart > findStart) {
-    const findFirstLine = lines[findStart].replace(/^find:\s*/i, '');
-    const findLines = [findFirstLine, ...lines.slice(findStart + 1, replaceStart)];
-    obj.find = findLines.join('\n').trim();
-
-    const replaceFirstLine = lines[replaceStart].replace(/^replace:\s*/i, '');
-    const replaceLines = [replaceFirstLine, ...lines.slice(replaceStart + 1)];
-    obj.replace = replaceLines.join('\n').trim();
-  }
-
-  if (!obj.owner || !obj.repo || !obj.path || !obj.message) return null;
-  if (content) obj.content = content;
-  return obj;
-}
-
+// ── Approval card rendering (used by the native tool-use engine) ──────────────
 function buildActionCardHTML(action, cardId) {
   const typeLabels = {
     gh_commit:      { label: 'GitHub Commit',    icon: 'git-commit',     cls: '' },
@@ -2186,213 +2108,10 @@ function buildActionCardHTML(action, cardId) {
   </div>`;
 }
 
-async function executeAction(action) {
-  switch (action.type) {
-    case 'gh_read': {
-      const file = await window.atlas.bridgeGhRead({ owner: action.owner, repo: action.repo, path: action.path, branch: action.branch || 'main' });
-      if (file.error) throw new Error(file.error);
-      const injection = `[File: ${action.path} (sha:${file.sha})]\n\`\`\`\n${file.content}\n\`\`\``;
-      chatHistory.push({ role: 'user', content: injection });
-      return `✓ Loaded ${action.path} (${file.content.split('\n').length} lines)`;
-    }
-    case 'gh_commit': {
-      const file = await window.atlas.bridgeGhRead({ owner: action.owner, repo: action.repo, path: action.path, branch: action.branch||'main' });
-      if (file.error) throw new Error(file.error);
-      // Normalize line endings everywhere
-      const fileContent = file.content.replace(/\r\n/g, '\n');
-      let newContent = fileContent;
-      if (action.content) {
-        // Full file rewrite
-        newContent = action.content.replace(/\r\n/g, '\n');
-      } else if (action.find && action.replace !== undefined) {
-        const find = action.find.replace(/\r\n/g, '\n');
-        const repl = action.replace.replace(/\r\n/g, '\n');
-        if (fileContent.includes(find)) {
-          // Exact match
-          newContent = fileContent.replace(find, repl);
-        } else {
-          // Fuzzy match: collapse whitespace differences per line
-          const normLine = s => s.split('\n').map(l => l.trimEnd()).join('\n');
-          const normFile = normLine(fileContent);
-          const normFind = normLine(find);
-          if (normFile.includes(normFind)) {
-            // Find the matching region in the original file by line
-            const findLines = normFind.split('\n');
-            const fileLines = fileContent.split('\n');
-            let startIdx = -1;
-            for (let i = 0; i <= fileLines.length - findLines.length; i++) {
-              let match = true;
-              for (let j = 0; j < findLines.length; j++) {
-                if (fileLines[i + j].trimEnd() !== findLines[j]) { match = false; break; }
-              }
-              if (match) { startIdx = i; break; }
-            }
-            if (startIdx >= 0) {
-              const before = fileLines.slice(0, startIdx);
-              const after  = fileLines.slice(startIdx + findLines.length);
-              newContent = [...before, ...repl.split('\n'), ...after].join('\n');
-            } else {
-              throw new Error(`Could not locate "${find.slice(0,80)}…" in file (fuzzy match failed)`);
-            }
-          } else {
-            throw new Error(`Could not find "${find.slice(0,80)}…" in file — the file may have changed since it was read`);
-          }
-        }
-      }
-      const r = await window.atlas.bridgeGhWrite({ owner:action.owner, repo:action.repo, path:action.path, content:newContent, sha:file.sha, message:action.message, branch:action.branch||'main' });
-      if (!r.ok) throw new Error(r.error||'Commit failed');
-      return `✓ Committed — ${r.sha?.slice(0,7)}`;
-    }
-    case 'slack_send': {
-      let channel = action.channel;
-      if (channel.startsWith('#')) { const chans = await window.atlas.bridgeSlackChannels(); const found = chans.channels?.find(c => c.name===channel.slice(1)); if (found) channel=found.id; }
-      const r = await window.atlas.bridgeSlackSend({ channel, text:action.text });
-      if (r.error) throw new Error(r.error);
-      return `✓ Sent to ${action.channel}`;
-    }
-    case 'gmail_send': {
-      const r = await window.atlas.bridgeGmailSend({ to:action.to, subject:action.subject, body:action.body });
-      if (r.error) throw new Error(r.error);
-      return `✓ Email sent to ${action.to}`;
-    }
-    case 'hs_note': {
-      const r = await window.atlas.bridgeHsNoteCreate({ contactId:action.contactId, note:action.note });
-      if (r.error) throw new Error(r.error);
-      return `✓ Note logged on contact ${action.contactId}`;
-    }
-    case 'hs_contact': {
-      const r = await window.atlas.bridgeHsContactCreate({ email:action.email, firstname:action.firstname, lastname:action.lastname, company:action.company });
-      if (r.error) throw new Error(r.error);
-      return `✓ Contact created: ${action.email}`;
-    }
-    case 'render_deploy': {
-      const r = await window.atlas.bridgeRenderDeploy({ serviceId:action.serviceId });
-      if (!r.ok) throw new Error(r.error||'Deploy failed');
-      return `✓ Deploy triggered — ${r.deployId}`;
-    }
-    case 'render_logs': {
-      const r = await window.atlas.bridgeRenderLogs({ serviceId:action.serviceId, deployId:action.deployId });
-      if (r.error) throw new Error(r.error);
-      const logText = r.logs || (r.events ? r.events.map(e => `[${e.type}] ${e.details || JSON.stringify(e)}`).join('\n') : 'No logs available');
-      // Inject logs into chat so Claude can read them
-      const injection = `[Render build logs for deploy ${r.deployId}${r.note ? ' (' + r.note + ')' : ''}]\n\`\`\`\n${logText.slice(-8000)}\n\`\`\``;
-      chatHistory.push({ role: 'user', content: injection });
-      const lineCount = logText.split('\n').length;
-      return `✓ Loaded ${lineCount} lines of build logs`;
-    }
-    case 'imessage_send': {
-      await window.atlas.bridgeIMessageSend({ recipient:action.to, message:action.message });
-      return `✓ iMessage sent to ${action.to}`;
-    }
-    case 'neon_query': {
-      const proj = projects.find(p => p.id === activeProjectId);
-      const neonUrl = proj?.neonUrl || undefined;
-      // Replace smart/curly quotes with straight quotes (Claude sometimes outputs Unicode quotes)
-      const sql = action.sql.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
-      const r = await window.atlas.bridgeNeonQuery({ sql, ...(neonUrl ? { neonUrl } : {}) });
-      if (r.error) throw new Error(r.error);
-      return `✓ ${r.rowCount} row${r.rowCount!==1?'s':''} returned\n${JSON.stringify(r.rows?.slice(0,5),null,2)}`;
-    }
-    default: throw new Error(`Unknown action type: ${action.type}`);
-  }
-}
-
-async function approveAction(cardId) {
-  const card = document.getElementById(cardId);
-  const action = pendingActions.get(cardId);
-  if (!action || !card) return;
-  const btn = card.querySelector('.commit-approve');
-  btn.disabled = true; btn.textContent = 'Working…';
-  try {
-    const resultMsg = await executeAction(action);
-    const res = document.createElement('div');
-    res.className = 'commit-result ok'; res.textContent = resultMsg;
-    card.querySelector('.commit-card-btns').replaceWith(res);
-    chatHistory.push({ role:'user', content:`[System: Action completed — ${resultMsg}]` });
-    pendingActions.delete(cardId);
-    if (activeConvId) autoSaveConv();
-
-    // Auto-continue after any approved action so Claude keeps going without "OK"
-    setTimeout(() => continueSend(), 300);
-  } catch (e) {
-    const res = document.createElement('div');
-    res.className = 'commit-result err'; res.textContent = `✗ ${e.message}`;
-    card.querySelector('.commit-card-btns').replaceWith(res);
-    btn.disabled = false; btn.textContent = 'Retry';
-  }
-}
-
-// Silent continue — triggers Claude to respond without a visible user message
-async function continueSend() {
-  if (!apiKey) return;
-  showTyping();
-  document.getElementById('send-btn').disabled = true;
-  try {
-    const history = mergeRoles(chatHistory.slice(-30));
-    const reply = await window.atlas.chat(history, apiKey, activeProjectId);
-    hideTyping();
-    addMsg('assistant', reply);
-    if (activeConvId) autoSaveConv();
-  } catch (e) {
-    hideTyping();
-    addMsg('assistant', 'Error: ' + e.message);
-  } finally {
-    document.getElementById('send-btn').disabled = false;
-  }
-}
-
-async function approveAllReads(cardId) {
-  autoApproveReads = true;
-  showToast('Auto-approving reads for this conversation');
-  await approveAction(cardId);
-}
-
-function cancelAction(cardId) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
-  const res = document.createElement('div');
-  res.className = 'commit-result'; res.style.color = 'var(--dim)'; res.textContent = 'Cancelled';
-  card.querySelector('.commit-card-btns')?.replaceWith(res);
-  pendingActions.delete(cardId);
-}
-
 function renderMessage(role, content) {
   const el = document.createElement('div');
   el.className = `msg ${role}`;
   if (role === 'assistant') {
-    const commit = parseCommitBlock(content);
-    const action = !commit ? parseActionBlock(content) : null;
-    const anyAction = commit || action;
-    if (anyAction) {
-      const cardId = `ac-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-      const displayText = content.replace(/```commit\n[\s\S]*?```/,'').replace(/```action\n[\s\S]*?```/,'').trim();
-
-      // Auto-approve safe read-only actions when flag is set
-      if (autoApproveReads && SAFE_ACTION_TYPES.has(anyAction.type)) {
-        el.innerHTML = `<div class="mlabel">Claude</div>${displayText?`<div class="bubble">${md(displayText)}</div>`:''}
-          <div class="auto-approved"><span class="ok">⟳</span> Auto-executing ${esc(anyAction.type)}…</div>`;
-        // Execute async — update the element when done
-        (async () => {
-          try {
-            const resultMsg = await executeAction(anyAction);
-            const resEl = el.querySelector('.auto-approved');
-            if (resEl) { resEl.innerHTML = `<span class="ok">✓</span> ${esc(resultMsg)}`; }
-            chatHistory.push({ role:'user', content:`[System: Action completed — ${resultMsg}]` });
-            if (activeConvId) autoSaveConv();
-            setTimeout(() => continueSend(), 300);
-          } catch (e) {
-            const resEl = el.querySelector('.auto-approved');
-            if (resEl) { resEl.innerHTML = `<span style="color:#f7768e">✗</span> ${esc(e.message)}`; }
-          }
-        })();
-        return el;
-      }
-
-      pendingActions.set(cardId, anyAction);
-      el.innerHTML = `<div class="mlabel">Claude</div>${displayText?`<div class="bubble">${md(displayText)}</div>`:''} ${buildActionCardHTML(anyAction, cardId)}`;
-      lucide.createIcons();
-      return el;
-    }
     el.innerHTML = `<div class="mlabel">Claude</div><div class="bubble">${md(content)}</div>`;
   } else {
     el.innerHTML = `<div class="mlabel">You</div><div class="bubble">${esc(content)}</div>`;
