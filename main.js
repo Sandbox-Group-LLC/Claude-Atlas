@@ -26,8 +26,10 @@ function startBridge() {
       execPath: process.execPath,
     });
   } else {
+    // ELECTRON_RUN_AS_NODE: run the Electron binary as plain Node, otherwise it boots a
+    // second Electron app (extra dock icon / "two instances") instead of just the bridge.
     bridgeProc = spawn(process.execPath, [bridgePath], {
-      env: { ...process.env, ATLAS_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json') },
+      env: { ...process.env, ATLAS_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'), ELECTRON_RUN_AS_NODE: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
