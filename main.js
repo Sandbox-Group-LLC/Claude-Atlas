@@ -162,7 +162,9 @@ function usageTotals() {
 // Soft caps (USD). Configurable via settings; sensible defaults.
 function costCaps() {
   const s = loadSettings();
-  return { perTurn: s.costCapPerTurn ?? 1.0, perDay: s.costCapPerDay ?? 20.0 };
+  const perTurn = s.costCapPerTurn ?? 1.0; // blank/undefined → default
+  const perDay  = s.costCapPerDay ?? 20.0;
+  return { perTurn: perTurn > 0 ? perTurn : Infinity, perDay: perDay > 0 ? perDay : Infinity }; // 0 → no cap
 }
 const pendingCostConfirms = new Map(); // confirmId → resolver
 

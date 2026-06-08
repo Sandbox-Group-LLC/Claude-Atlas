@@ -195,6 +195,8 @@ svg.lucide { display:block; stroke-width:1.75; }
 .s-toggle svg.lucide { width:13px; height:13px; }
 .s-textarea { width:100%; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12.5px; font-family:inherit; resize:vertical; min-height:80px; outline:none; line-height:1.55; }
 .s-textarea:focus { border-color:var(--accent); }
+.s-num { width:100%; padding:7px 9px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12.5px; font-family:inherit; outline:none; box-sizing:border-box; }
+.s-num:focus { border-color:var(--accent); }
 .env-row { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
 .env-key { width:38%; padding:5px 8px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:11.5px; font-family:'SF Mono',Consolas,monospace; outline:none; }
 .env-val { flex:1; padding:5px 8px; background:var(--surface); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; outline:none; }
@@ -696,6 +698,18 @@ svg.lucide { display:block; stroke-width:1.75; }
             <div class="s-section">
               <div class="s-label">Global System Prompt</div>
               <textarea class="s-textarea" id="global-prompt" rows="4" placeholder="Instructions injected into every conversation…" onchange="saveAllSettings()"></textarea>
+            </div>
+            <div class="s-section">
+              <div class="s-label">Spend Limits (USD)</div>
+              <div style="display:flex; gap:8px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--dim);">Per turn
+                  <input class="s-num" id="cap-per-turn" type="number" min="0" step="0.25" placeholder="1.00" onchange="saveAllSettings()">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--dim);">Per day
+                  <input class="s-num" id="cap-per-day" type="number" min="0" step="1" placeholder="20.00" onchange="saveAllSettings()">
+                </label>
+              </div>
+              <div style="font-size:11px; color:var(--dim);">Chat pauses for confirmation when a turn or the day's total crosses these. Blank = default · 0 = no cap.</div>
             </div>
             <div class="s-section" style="padding-top:4px;">
               <button class="tool-btn primary" onclick="saveAllSettings()" style="width:100%;">Save Settings</button>
@@ -1463,6 +1477,8 @@ function renderSettings() {
   const keyInp = document.getElementById('settings-api-key');
   keyInp.value = settings.apiKey || apiKey || '';
   document.getElementById('global-prompt').value = settings.globalSystemPrompt || '';
+  document.getElementById('cap-per-turn').value = settings.costCapPerTurn ?? '';
+  document.getElementById('cap-per-day').value  = settings.costCapPerDay ?? '';
   renderEnvList();
   renderCardList();
 }
@@ -1588,6 +1604,10 @@ async function saveAllSettings() {
   const newKey = document.getElementById('settings-api-key').value.trim();
   if (newKey && !newKey.startsWith('•')) { settings.apiKey = newKey; apiKey = newKey; }
   settings.globalSystemPrompt = document.getElementById('global-prompt').value;
+  const ptv = document.getElementById('cap-per-turn').value.trim();
+  const pdv = document.getElementById('cap-per-day').value.trim();
+  settings.costCapPerTurn = ptv === '' ? undefined : Math.max(0, parseFloat(ptv) || 0);
+  settings.costCapPerDay  = pdv === '' ? undefined : Math.max(0, parseFloat(pdv) || 0);
   await window.atlas.saveSettings(settings);
   showToast('Settings saved');
 }
