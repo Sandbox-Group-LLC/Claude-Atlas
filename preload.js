@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('atlas', {
   // Native tool-use streaming chat engine
   chatStream:   (msgs, key, pid) => ipcRenderer.invoke('chat-stream', { messages: msgs, apiKey: key, projectId: pid }),
   chatApprove:  (approvalId, outcome) => ipcRenderer.send('chat-approve', { approvalId, outcome }),
+  chatCostContinue: (confirmId, outcome) => ipcRenderer.send('chat-cost-continue', { confirmId, outcome }),
+  getUsageTotals:   () => ipcRenderer.invoke('get-usage-totals'),
   onChatEvent:  (cb) => { ipcRenderer.on('chat-event', (_, d) => cb(d)); },
   summarize:    (key, pid)       => ipcRenderer.invoke('summarize',   { apiKey: key, projectId: pid }),
   extract:      (key, pid)       => ipcRenderer.invoke('extract',     { apiKey: key, projectId: pid }),

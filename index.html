@@ -349,6 +349,8 @@ svg.lucide { display:block; stroke-width:1.75; }
 .msg.tool-status { margin:2px 0; }
 .tool-line { font-size:12px; color:var(--dim); padding:3px 8px; background:var(--surface); border-radius:6px; display:inline-block; max-width:92%; overflow-wrap:break-word; word-break:break-word; }
 .tool-line.err { color:#f7768e; }
+.msg.turn-cost { margin:1px 0 4px; }
+.cost-line { font-size:11px; color:var(--dim); opacity:.75; padding:1px 4px; }
 /* Action card accent colors per type */
 .action-card-slack    { border-color:#e01e5a; } .action-card-slack    .commit-card-title { color:#e01e5a; } .action-card-slack    .commit-approve { background:#e01e5a; }
 .action-card-gmail    { border-color:#ea4335; } .action-card-gmail    .commit-card-title { color:#ea4335; } .action-card-gmail    .commit-approve { background:#ea4335; }
@@ -393,6 +395,7 @@ svg.lucide { display:block; stroke-width:1.75; }
       <div class="kpi-section" id="kpi-weather"><span class="kpi-icon">🌤</span> <span class="kpi-val">Loading…</span></div>
       <div class="kpi-section" id="kpi-clock"><span class="kpi-val" id="kpi-time"></span></div>
       <div class="kpi-section" id="kpi-system"><span class="kpi-val" id="kpi-cpu">CPU —%</span> <span class="kpi-sep">·</span> <span class="kpi-val" id="kpi-mem">Mem —%</span></div>
+      <div class="kpi-section" id="kpi-cost" title="Claude API spend — session / today / all-time"><span class="kpi-icon">$</span> <span class="kpi-val" id="kpi-cost-val">—</span></div>
     </div>
 
     <div id="content-row">
@@ -792,6 +795,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.atlas.onFocusUrl(()         => { const u = document.getElementById('url'); u.focus(); u.select(); });
   window.atlas.onToggleDownloads(()  => dlsOpen ? hideDls() : showDls());
   window.atlas.onChatEvent(handleChatEvent);
+  window.atlas.getUsageTotals().then(updateCostKpi).catch(() => {});
 
   // Atlas text actions from right-click context menu
   window.atlas.onHistoryInit(items => { items.forEach(h => tabHistory.set(h.url, h)); });
@@ -1316,6 +1320,25 @@ function handleChatEvent(ev) {
       if (chatStreamState.lastToolEl) chatStreamState.lastToolEl.innerHTML =
         `<div class="tool-line err">✗ ${esc(ev.tool)} — ${esc(ev.error || '')}</div>`;
       break;
+    case 'usage':
+      updateCostKpi(ev);
+      showTurnCost(ev.turnCost, ev.tokens, ev.final);
+      break;
+    case 'cost_warn': {
+      finalizeLiveBubble(); hideTyping();
+      const el = document.createElement('div'); el.className = 'msg assistant';
+      el.innerHTML = `<div class="commit-card" id="${ev.confirmId}" style="border-color:#e0af68">
+        <div class="commit-card-title"><i data-lucide="alert-triangle"></i> Spend check</div>
+        <div class="commit-card-msg">This turn has reached <b>$${(ev.turnCost||0).toFixed(2)}</b> (today: $${(ev.dayProjected||0).toFixed(2)}, cap $${(ev.caps?.perTurn||0).toFixed(2)}/turn · $${(ev.caps?.perDay||0).toFixed(2)}/day). Keep going?</div>
+        <div class="commit-card-btns">
+          <button class="commit-approve" onclick="costContinue('${ev.confirmId}')">Continue</button>
+          <button class="commit-cancel" onclick="costStop('${ev.confirmId}')">Stop</button>
+        </div></div>`;
+      document.getElementById('msgs').appendChild(el);
+      document.getElementById('msgs').scrollTop = 1e9;
+      lucide.createIcons();
+      break;
+    }
     case 'approval': {
       finalizeLiveBubble(); hideTyping();
       const action = { type: ev.tool, ...ev.input };
@@ -1357,6 +1380,36 @@ function cancelStreamAction(approvalId) {
   const btns = card?.querySelector('.commit-card-btns');
   if (btns) btns.innerHTML = '<div class="commit-result">Cancelled</div>';
   window.atlas.chatApprove(approvalId, 'cancelled');
+}
+
+// ── Cost meter ────────────────────────────────────────────────────────────────
+function updateCostKpi(t) {
+  const el = document.getElementById('kpi-cost-val');
+  if (!el || !t) return;
+  el.textContent = `$${(t.today || 0).toFixed(2)}`;
+  const sec = document.getElementById('kpi-cost');
+  if (sec) sec.title = `Claude API spend — session $${(t.session||0).toFixed(2)} · today $${(t.today||0).toFixed(2)} · all-time $${(t.all||0).toFixed(2)}`;
+}
+function showTurnCost(cost, tokens, final) {
+  if (!chatStreamState) return;
+  const box = document.getElementById('msgs');
+  let el = chatStreamState.costEl;
+  if (!el) { el = document.createElement('div'); el.className = 'msg turn-cost'; box.appendChild(el); chatStreamState.costEl = el; }
+  const tk = tokens || {};
+  const inTok = (tk.input || 0) + (tk.cacheCreation || 0) + (tk.cacheRead || 0);
+  el.innerHTML = `<div class="cost-line">$${(cost || 0).toFixed(3)} this turn · ${(inTok/1000).toFixed(1)}k in / ${((tk.output||0)/1000).toFixed(1)}k out</div>`;
+  if (final) chatStreamState.costEl = null; // freeze it in place for this turn
+  box.scrollTop = box.scrollHeight;
+}
+function costContinue(confirmId) {
+  const c = document.getElementById(confirmId)?.querySelector('.commit-card-btns');
+  if (c) c.innerHTML = '<div class="commit-result ok">Continuing…</div>';
+  window.atlas.chatCostContinue(confirmId, 'continue');
+}
+function costStop(confirmId) {
+  const c = document.getElementById(confirmId)?.querySelector('.commit-card-btns');
+  if (c) c.innerHTML = '<div class="commit-result">Stopped</div>';
+  window.atlas.chatCostContinue(confirmId, 'stop');
 }
 
 async function send() {

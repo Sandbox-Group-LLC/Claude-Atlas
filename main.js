@@ -127,6 +127,45 @@ const saveSettings   = (s) => wj(fp('settings.json'), s);
 const loadSavedTabs  = ()  => rj(fp('tabs.json'), []);
 const saveTabs       = (t) => wj(fp('tabs.json'), t);
 
+// ─── Cost meter ───────────────────────────────────────────────────────────────
+// Per-MTok USD rates. Cache writes bill at 1.25x input, cache reads at 0.1x.
+const MODEL_PRICING = {
+  'claude-opus-4-8':   { in: 5, out: 25 },
+  'claude-opus-4-7':   { in: 5, out: 25 },
+  'claude-sonnet-4-6': { in: 3, out: 15 },
+  'claude-haiku-4-5':  { in: 1, out: 5 },
+};
+function usageCost(model, u) {
+  const p = MODEL_PRICING[model] || MODEL_PRICING['claude-opus-4-8'];
+  const M = 1_000_000;
+  return ((u.input || 0) / M) * p.in
+       + ((u.cacheCreation || 0) / M) * p.in * 1.25
+       + ((u.cacheRead || 0) / M) * p.in * 0.1
+       + ((u.output || 0) / M) * p.out;
+}
+const loadUsage = () => rj(fp('usage.json'), []);
+function appendUsage(rec) {
+  const log = loadUsage();
+  log.push(rec);
+  if (log.length > 5000) log.splice(0, log.length - 5000); // bound file size
+  wj(fp('usage.json'), log);
+}
+let sessionCost = 0; // resets on app restart
+function usageTotals() {
+  const log = loadUsage();
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  let today = 0, all = 0;
+  for (const r of log) { all += r.cost || 0; if ((r.ts || 0) >= startOfDay) today += r.cost || 0; }
+  return { session: sessionCost, today, all };
+}
+// Soft caps (USD). Configurable via settings; sensible defaults.
+function costCaps() {
+  const s = loadSettings();
+  return { perTurn: s.costCapPerTurn ?? 1.0, perDay: s.costCapPerDay ?? 20.0 };
+}
+const pendingCostConfirms = new Map(); // confirmId → resolver
+
 // ─── Card Vault ──────────────────────────────────────────────────────────────
 let _vaultKey = null;
 function getVaultKey() {
@@ -1257,6 +1296,11 @@ ipcMain.on('chat-approve', (_, { approvalId, outcome }) => {
   const resolve = pendingChatApprovals.get(approvalId);
   if (resolve) { pendingChatApprovals.delete(approvalId); resolve(outcome); }
 });
+ipcMain.on('chat-cost-continue', (_, { confirmId, outcome }) => {
+  const resolve = pendingCostConfirms.get(confirmId);
+  if (resolve) { pendingCostConfirms.delete(confirmId); resolve(outcome); }
+});
+ipcMain.handle('get-usage-totals', () => usageTotals());
 
 ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => {
   const settings = loadSettings();
@@ -1315,6 +1359,11 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
     const callCounts = new Map(); // loop detection: name+input → consecutive count
     let aborted = false;
 
+    // Cost meter: accumulate this turn's token usage and dollar cost across rounds.
+    const turnUsage = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 };
+    let turnCost = 0, capAcked = false;
+    const caps = costCaps();
+
     for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
       // Prompt caching: breakpoint on the system prompt and the last tool def, so
       // every round after the first reads the stable prefix at ~10% input cost.
@@ -1340,11 +1389,40 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       const finalMsg = await stream.finalMessage();
       conv.push({ role: 'assistant', content: finalMsg.content });
 
+      // Cost meter: fold this round's usage into the turn and tick the live meter.
+      const u = finalMsg.usage || {};
+      turnUsage.input += u.input_tokens || 0;
+      turnUsage.output += u.output_tokens || 0;
+      turnUsage.cacheCreation += u.cache_creation_input_tokens || 0;
+      turnUsage.cacheRead += u.cache_read_input_tokens || 0;
+      turnCost = usageCost(CHAT_MODEL, turnUsage);
+      {
+        const t = usageTotals();
+        send({ type: 'usage', turnCost, tokens: { ...turnUsage }, session: t.session + turnCost, today: t.today + turnCost, all: t.all + turnCost });
+      }
+
       const assistantText = finalMsg.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
       const toolBlocks = finalMsg.content.filter(b => b.type === 'tool_use');
 
       if (toolBlocks.length === 0) { finalText = assistantText; break; }
       send({ type: 'round_break' }); // assistant paused to call tools; start a fresh bubble next round
+
+      // Soft spend cap: pause for confirmation when this turn or today's total crosses a threshold.
+      if (!capAcked) {
+        const dayProjected = usageTotals().today + turnCost;
+        if (turnCost >= caps.perTurn || dayProjected >= caps.perDay) {
+          const confirmId = `cost-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          send({ type: 'cost_warn', confirmId, turnCost, dayProjected, caps });
+          const outcome = await new Promise(res => pendingCostConfirms.set(confirmId, res));
+          if (outcome !== 'continue') {
+            finalText = assistantText || finalText;
+            aborted = true;
+            send({ type: 'tool_status', content: 'Stopped at spend cap.' });
+            break;
+          }
+          capAcked = true;
+        }
+      }
 
       const toolResults = [];
       for (const tu of toolBlocks) {
@@ -1401,6 +1479,16 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       }
       conv.push({ role: 'user', content: toolResults });
       if (aborted) break;
+    }
+
+    // Cost meter: persist this turn's spend, then push an accurate final total.
+    if (turnCost > 0) {
+      sessionCost += turnCost;
+      appendUsage({ ts: Date.now(), model: CHAT_MODEL, ...turnUsage, cost: turnCost, projectId: projectId || null });
+    }
+    {
+      const t = usageTotals();
+      send({ type: 'usage', turnCost, tokens: { ...turnUsage }, session: t.session, today: t.today, all: t.all, final: true });
     }
 
     send({ type: 'done', text: finalText });
