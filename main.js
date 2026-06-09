@@ -1434,6 +1434,8 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
     const project = loadProjects().find(p => p.id === projectId);
     const availableTools = getAvailableTools(project, settings.envVars || {});
     const tools = buildChatTools(availableTools);
+    // Selected model (validated against the price table); defaults to Opus 4.8.
+    const model = MODEL_PRICING[settings.chatModel] ? settings.chatModel : CHAT_MODEL;
 
     const Anthropic = require('@anthropic-ai/sdk');
     const Client = Anthropic.default || Anthropic;
@@ -1492,7 +1494,7 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       let stream;
       try {
         stream = await client.messages.stream({
-          model: CHAT_MODEL, max_tokens: 16000,
+          model, max_tokens: 16000,
           system: cachedSystem, tools: cachedTools, messages: buildOutgoing(round),
         });
       } catch (e) {
@@ -1514,7 +1516,7 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
       turnUsage.output += u.output_tokens || 0;
       turnUsage.cacheCreation += u.cache_creation_input_tokens || 0;
       turnUsage.cacheRead += u.cache_read_input_tokens || 0;
-      turnCost = usageCost(CHAT_MODEL, turnUsage);
+      turnCost = usageCost(model, turnUsage);
       {
         const t = usageTotals();
         send({ type: 'usage', turnCost, tokens: { ...turnUsage }, session: t.session + turnCost, today: t.today + turnCost, all: t.all + turnCost });
@@ -1603,7 +1605,7 @@ ipcMain.handle('chat-stream', async (event, { messages, apiKey, projectId }) => 
     // Cost meter: persist this turn's spend, then push an accurate final total.
     if (turnCost > 0) {
       sessionCost += turnCost;
-      appendUsage({ ts: Date.now(), model: CHAT_MODEL, ...turnUsage, cost: turnCost, projectId: projectId || null });
+      appendUsage({ ts: Date.now(), model, ...turnUsage, cost: turnCost, projectId: projectId || null });
     }
     {
       const t = usageTotals();

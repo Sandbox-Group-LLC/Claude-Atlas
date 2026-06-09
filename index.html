@@ -166,7 +166,11 @@ svg.lucide { display:block; stroke-width:1.75; }
 .dot { width:6px; height:6px; border-radius:50%; background:var(--dim); animation:bob 1.2s ease-in-out infinite; }
 .dot:nth-child(2){animation-delay:.2s} .dot:nth-child(3){animation-delay:.4s}
 @keyframes bob { 0%,80%,100%{transform:scale(.8);opacity:.5} 40%{transform:scale(1);opacity:1} }
-#chat-foot { padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; flex-shrink:0; }
+#chat-toolbar { padding:6px 14px 0; display:flex; justify-content:flex-end; flex-shrink:0; }
+#model-sel { -webkit-app-region:no-drag; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--dim); font-size:11px; font-family:inherit; padding:3px 6px; outline:none; cursor:pointer; }
+#model-sel:hover { color:var(--text); }
+#model-sel:focus { border-color:var(--accent); }
+#chat-foot { padding:8px 14px 12px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; flex-shrink:0; }
 #chat-in { flex:1; padding:9px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:13px; font-family:inherit; resize:none; outline:none; max-height:120px; min-height:38px; line-height:1.5; transition:.15s; }
 #chat-in:focus { border-color:var(--accent); }
 #send-btn { all:unset; -webkit-app-region:no-drag; width:34px; height:34px; border-radius:8px; background:var(--accent); display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; flex-shrink:0; transition:.12s; }
@@ -452,6 +456,13 @@ svg.lucide { display:block; stroke-width:1.75; }
                 <strong>Ask Claude about this page</strong>
                 <span>Claude sees everything you're viewing</span>
               </div>
+            </div>
+            <div id="chat-toolbar">
+              <select id="model-sel" onchange="setChatModel(this.value)" title="Model — switch to a lighter, cheaper model for simple tasks">
+                <option value="claude-opus-4-8">Opus 4.8</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+                <option value="claude-haiku-4-5">Haiku 4.5</option>
+              </select>
             </div>
             <div id="chat-foot">
               <textarea id="chat-in" rows="1" placeholder="Ask about this page…" onkeydown="chatKey(event)" oninput="grow(this)"></textarea>
@@ -856,6 +867,7 @@ window.addEventListener('DOMContentLoaded', () => {
         window.atlas.saveSettings(settings);
       }
       renderSettings();
+      initModelPicker();
     }).catch(console.error),
     window.atlas.getProjects().then(p  => { projects = p; renderProjectSel(); renderProjList(); }).catch(console.error),
     window.atlas.getAvailableTools().then(t => { availableToolStatus = t; renderToolStatusList(); }).catch(console.error),
@@ -1648,6 +1660,18 @@ async function setDefaultBrowser() {
     showToast(r.isDefault ? 'Atlas is now your default browser 🎉' : 'Requested — confirm the macOS prompt if it appears');
     setTimeout(refreshDefaultBrowserStatus, 800);
   } catch (e) { showToast('Error: ' + e.message); }
+}
+
+// ── Chat model picker ──
+const MODEL_LABELS = { 'claude-opus-4-8': 'Opus 4.8', 'claude-sonnet-4-6': 'Sonnet 4.6', 'claude-haiku-4-5': 'Haiku 4.5' };
+function setChatModel(value) {
+  settings.chatModel = value;
+  window.atlas.saveSettings(settings);
+  showToast('Model → ' + (MODEL_LABELS[value] || value));
+}
+function initModelPicker() {
+  const sel = document.getElementById('model-sel');
+  if (sel) sel.value = MODEL_LABELS[settings.chatModel] ? settings.chatModel : 'claude-opus-4-8';
 }
 
 // ── Saved Logins ──
