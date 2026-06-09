@@ -20,6 +20,9 @@
   "build": {
     "appId": "com.atlas.browser",
     "productName": "Atlas",
+    "protocols": [
+      { "name": "Web link", "schemes": ["http", "https"], "role": "Viewer" }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
