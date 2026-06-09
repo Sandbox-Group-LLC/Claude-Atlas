@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('atlas', {
   vaultDeleteCard: (id)           => ipcRenderer.invoke('vault-delete-card', { id }),
   vaultFillCard:   (id)           => ipcRenderer.invoke('vault-fill-card', { id }),
 
+  // Login vault (passwords)
+  vaultGetLogins:   ()            => ipcRenderer.invoke('vault-get-logins'),
+  vaultAddLogin:    (l)           => ipcRenderer.invoke('vault-add-login', l),
+  vaultDeleteLogin: (id)          => ipcRenderer.invoke('vault-delete-login', { id }),
+  vaultImportCsv:   (csv)         => ipcRenderer.invoke('vault-import-csv', { csv }),
+
   getDownloads:   ()             => ipcRenderer.invoke('get-downloads'),
   openDownload:   (p)            => ipcRenderer.invoke('open-download', p),
   showInFolder:   (p)            => ipcRenderer.invoke('show-in-folder', p),

@@ -1072,6 +1072,85 @@ ipcMain.handle('vault-fill-card', (_, { id }) => {
   return { ...data, label: card.label, network: card.network };
 });
 
+// ─── Login vault (passwords) ───────────────────────────────────────────────────
+// Same AES-256-GCM scheme as cards: host + username kept as metadata for matching
+// and display; the password is encrypted. Stored in settings.savedLogins.
+function normHost(input) {
+  if (!input) return '';
+  let h = String(input).trim();
+  try { if (/^[a-z]+:\/\//i.test(h)) h = new URL(h).hostname; } catch {}
+  return h.replace(/^www\./i, '').toLowerCase();
+}
+function parseCsv(text) {
+  const rows = []; let row = [], field = '', inQuotes = false;
+  text = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+const loginMeta = c => ({ id: c.id, host: c.host, username: c.username, label: c.label });
+
+ipcMain.handle('vault-get-logins', () => (loadSettings().savedLogins || []).map(loginMeta));
+ipcMain.handle('vault-get-logins-for-host', (_, { host }) => {
+  const h = normHost(host);
+  return (loadSettings().savedLogins || []).filter(c => normHost(c.host) === h).map(loginMeta);
+});
+ipcMain.handle('vault-add-login', (_, { host, username, password, label }) => {
+  const s = loadSettings();
+  if (!s.savedLogins) s.savedLogins = [];
+  s.savedLogins.push({
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 5),
+    host: normHost(host), username: username || '', label: label || '',
+    encrypted: encryptCard({ password: password || '' }),
+  });
+  saveSettings(s);
+  return s.savedLogins.map(loginMeta);
+});
+ipcMain.handle('vault-delete-login', (_, { id }) => {
+  const s = loadSettings();
+  s.savedLogins = (s.savedLogins || []).filter(c => c.id !== id);
+  saveSettings(s);
+  return s.savedLogins.map(loginMeta);
+});
+ipcMain.handle('vault-fill-login', (_, { id }) => {
+  const c = (loadSettings().savedLogins || []).find(c => c.id === id);
+  if (!c) return null;
+  return { username: c.username, password: decryptCard(c.encrypted).password };
+});
+ipcMain.handle('vault-import-csv', (_, { csv }) => {
+  const rows = parseCsv(csv).filter(r => r.some(x => x !== ''));
+  if (rows.length < 2) return { added: 0, error: 'No rows found in the CSV.' };
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const iUrl = header.indexOf('url'), iUser = header.indexOf('username'), iPass = header.indexOf('password'), iName = header.indexOf('name');
+  if (iUrl < 0 || iUser < 0 || iPass < 0) return { added: 0, error: 'Expected Chrome export columns: url, username, password.' };
+  const s = loadSettings();
+  if (!s.savedLogins) s.savedLogins = [];
+  let added = 0, skipped = 0;
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const host = normHost(row[iUrl]); const username = (row[iUser] || '').trim(); const password = row[iPass] || '';
+    if (!host || (!username && !password)) { skipped++; continue; }
+    if (s.savedLogins.some(c => normHost(c.host) === host && c.username === username)) { skipped++; continue; } // de-dup
+    s.savedLogins.push({
+      id: Date.now().toString() + r + Math.random().toString(36).slice(2, 5),
+      host, username, label: iName >= 0 ? (row[iName] || '') : '',
+      encrypted: encryptCard({ password }),
+    });
+    added++;
+  }
+  saveSettings(s);
+  return { added, skipped, total: s.savedLogins.length };
+});
+
 // Downloads
 ipcMain.handle('get-downloads',   ()     => [...downloads.values()]);
 ipcMain.handle('open-download',   (_, p) => shell.openPath(p));

@@ -369,3 +369,116 @@ window.atlasOverlayReplace = () => {
   // Initial check
   setTimeout(scheduleCheck, 1000);
 })();
+
+// ─── Login Autofill ─────────────────────────────────────────────────────────
+(() => {
+  let loginBtn = null, loginPicker = null, lastKey = '';
+
+  function isVisible(el) { return el && el.offsetParent !== null && el.getClientRects().length > 0; }
+
+  function detectLoginFields() {
+    const pws = [...document.querySelectorAll('input[type="password"]')].filter(isVisible);
+    // Skip credit-card CVC fields handled by the payment autofiller.
+    const pw = pws.find(p => !/csc|cvv|cvc|security/i.test((p.name || '') + (p.id || '') + (p.autocomplete || '')));
+    if (!pw) return null;
+    const scope = pw.closest('form') || document;
+    let user = null;
+    const cands = scope.querySelectorAll(
+      'input[autocomplete="username"], input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i], input[id*="user" i], input[id*="email" i], input[type="text"]'
+    );
+    for (const el of cands) { if (el.type !== 'password' && isVisible(el)) { user = el; break; } }
+    return { userField: user, pwField: pw };
+  }
+
+  function fillField(el, value) {
+    if (!el || value == null) return;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(el, value); else el.value = value;
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('blur',   { bubbles: true }));
+  }
+
+  function removeUI() { loginBtn?.remove(); loginBtn = null; loginPicker?.remove(); loginPicker = null; }
+
+  function ensureStyles() {
+    if (document.getElementById('atlas-login-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'atlas-login-styles';
+    style.textContent = `
+      #atlas-login-btn { position:absolute; z-index:2147483646; display:flex; align-items:center; gap:4px; padding:3px 8px; background:#1a1b26; border:1px solid rgba(122,162,247,.4); border-radius:5px; color:#7aa2f7; font-size:11px; font-family:-apple-system,sans-serif; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.3); white-space:nowrap; }
+      #atlas-login-btn:hover { background:#1e2030; border-color:#7aa2f7; }
+      #atlas-login-picker { position:absolute; z-index:2147483647; background:#1a1b26; border:1px solid rgba(122,162,247,.3); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.4); overflow:hidden; min-width:200px; max-width:320px; }
+      .atlas-lp-item { display:flex; align-items:center; gap:8px; padding:8px 12px; color:#c0caf5; font-size:12px; font-family:-apple-system,sans-serif; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.05); }
+      .atlas-lp-item:last-child { border-bottom:none; }
+      .atlas-lp-item:hover { background:rgba(122,162,247,.1); }
+      .atlas-lp-user { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  async function injectLoginBtn(fields) {
+    if (loginBtn) return;
+    const logins = await ipcRenderer.invoke('vault-get-logins-for-host', { host: location.hostname });
+    if (!logins || !logins.length) return; // nothing saved for this site
+    ensureStyles();
+    loginBtn = document.createElement('div');
+    loginBtn.id = 'atlas-login-btn';
+    loginBtn.textContent = '🔑 Fill login';
+    document.body.appendChild(loginBtn);
+    const anchor = fields.userField || fields.pwField;
+    const rect = anchor.getBoundingClientRect();
+    loginBtn.style.top  = (window.scrollY + rect.top + rect.height + 4) + 'px';
+    loginBtn.style.left = (window.scrollX + rect.right - loginBtn.offsetWidth) + 'px';
+    loginBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (loginPicker) { loginPicker.remove(); loginPicker = null; return; }
+      if (logins.length === 1) { fillLogin(logins[0].id, fields); return; }
+      showLoginPicker(logins, fields);
+    });
+  }
+
+  function showLoginPicker(logins, fields) {
+    loginPicker = document.createElement('div');
+    loginPicker.id = 'atlas-login-picker';
+    const rect = loginBtn.getBoundingClientRect();
+    loginPicker.style.top  = (window.scrollY + rect.bottom + 4) + 'px';
+    loginPicker.style.left = (window.scrollX + rect.left) + 'px';
+    logins.forEach(l => {
+      const item = document.createElement('div');
+      item.className = 'atlas-lp-item';
+      item.innerHTML = `<span>🔑</span> <span class="atlas-lp-user"></span>`;
+      item.querySelector('.atlas-lp-user').textContent = l.username || l.host;
+      item.addEventListener('click', (e) => { e.stopPropagation(); fillLogin(l.id, fields); });
+      loginPicker.appendChild(item);
+    });
+    document.body.appendChild(loginPicker);
+    document.addEventListener('click', () => { loginPicker?.remove(); loginPicker = null; }, { once: true });
+  }
+
+  async function fillLogin(id, fields) {
+    const data = await ipcRenderer.invoke('vault-fill-login', { id });
+    if (!data) return;
+    fillField(fields.userField, data.username);
+    fillField(fields.pwField,   data.password);
+    removeUI();
+  }
+
+  let checkTimer = null;
+  function scheduleCheck() {
+    if (checkTimer) return;
+    checkTimer = setTimeout(() => {
+      checkTimer = null;
+      const fields = detectLoginFields();
+      // Re-inject only when the field set changes, so the button doesn't churn.
+      const key = fields ? (fields.userField ? '1' : '0') + (fields.pwField ? '1' : '0') + location.hostname : '';
+      if (fields && key !== lastKey) { removeUI(); lastKey = key; injectLoginBtn(fields); }
+      else if (!fields) { removeUI(); lastKey = ''; }
+    }, 1500);
+  }
+
+  const observer = new MutationObserver(scheduleCheck);
+  if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+  else document.addEventListener('DOMContentLoaded', () => { observer.observe(document.body, { childList: true, subtree: true }); scheduleCheck(); });
+  setTimeout(scheduleCheck, 1000);
+})();

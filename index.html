@@ -743,6 +743,17 @@ svg.lucide { display:block; stroke-width:1.75; }
             </div>
 
             <div class="s-section">
+              <div class="s-label">Saved Logins</div>
+              <div id="login-list"></div>
+              <div style="display:flex; gap:6px;">
+                <button class="s-add-btn" style="flex:1" onclick="showAddLoginModal()"><i data-lucide="key-round"></i> Add login</button>
+                <button class="s-add-btn" style="flex:1" onclick="document.getElementById('login-csv-input').click()"><i data-lucide="upload"></i> Import from Chrome</button>
+              </div>
+              <input type="file" id="login-csv-input" accept=".csv,text/csv" style="display:none" onchange="importLoginsCsv(this)">
+              <div style="font-size:11px; color:var(--dim);">Chrome → Password Manager → Settings → Export passwords → import the CSV here. Passwords are encrypted (AES-256) on this device.</div>
+            </div>
+
+            <div class="s-section">
               <div class="s-label">Projects</div>
               <div id="proj-list"></div>
               <button class="s-add-btn" onclick="newProjectFromSettings()"><i data-lucide="folder-plus"></i> New project</button>
@@ -1517,6 +1528,7 @@ function renderSettings() {
   document.getElementById('cap-per-day').value  = settings.costCapPerDay ?? '';
   renderEnvList();
   renderCardList();
+  renderLoginList();
 }
 
 // ── Saved Cards ──
@@ -1607,6 +1619,82 @@ async function saveNewCard() {
     closeCardModal();
     renderCardList();
     showToast('Card saved');
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+// ── Saved Logins ──
+async function renderLoginList() {
+  const container = document.getElementById('login-list'); if (!container) return;
+  container.innerHTML = '';
+  try {
+    const logins = await window.atlas.vaultGetLogins();
+    logins.sort((a, b) => (a.host || '').localeCompare(b.host || ''));
+    logins.forEach(l => {
+      const row = document.createElement('div'); row.className = 'card-item';
+      row.innerHTML = `<span class="card-icon">🔑</span>
+        <span class="card-last4">${esc(l.host || '—')}</span>
+        <span class="card-label">${esc(l.username || '')}</span>
+        <button class="card-del" title="Delete"><i data-lucide="x"></i></button>`;
+      row.querySelector('.card-del').addEventListener('click', async () => {
+        await window.atlas.vaultDeleteLogin(l.id);
+        renderLoginList();
+        showToast('Login removed');
+      });
+      container.appendChild(row);
+    });
+    if (logins.length) lucide.createIcons();
+  } catch {}
+}
+
+async function importLoginsCsv(input) {
+  const file = input.files && input.files[0];
+  input.value = ''; // reset so the same file can be re-picked
+  if (!file) return;
+  try {
+    const csv = await file.text();
+    const r = await window.atlas.vaultImportCsv(csv);
+    if (r.error) { showToast('Import failed: ' + r.error); return; }
+    renderLoginList();
+    showToast(`Imported ${r.added} login${r.added !== 1 ? 's' : ''}${r.skipped ? ` · ${r.skipped} skipped` : ''}`);
+  } catch (e) { showToast('Import error: ' + e.message); }
+}
+
+async function showAddLoginModal() {
+  await window.atlas.hideActiveView();
+  const overlay = document.createElement('div');
+  overlay.id = 'card-modal-overlay';
+  overlay.innerHTML = `<div class="card-modal">
+    <h3>Add login</h3>
+    <label>Website</label>
+    <input id="lm-host" type="text" placeholder="example.com" autocomplete="off">
+    <label>Username / Email</label>
+    <input id="lm-user" type="text" placeholder="you@example.com" autocomplete="off">
+    <label>Password</label>
+    <input id="lm-pass" type="password" placeholder="••••••••" autocomplete="off">
+    <div class="card-note">Password is encrypted (AES-256) and stored locally on this device.</div>
+    <div class="card-modal-btns">
+      <button class="cancel" id="lm-cancel">Cancel</button>
+      <button class="save" id="lm-save">Save Login</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeCardModal(); });
+  document.getElementById('lm-cancel').addEventListener('click', closeCardModal);
+  document.getElementById('lm-save').addEventListener('click', saveNewLogin);
+  document.getElementById('lm-host').focus();
+}
+
+async function saveNewLogin() {
+  const host = document.getElementById('lm-host').value.trim();
+  const username = document.getElementById('lm-user').value.trim();
+  const password = document.getElementById('lm-pass').value;
+  if (!host) { showToast('Website required'); return; }
+  if (!username && !password) { showToast('Enter a username or password'); return; }
+  try {
+    await window.atlas.vaultAddLogin({ host, username, password });
+    closeCardModal();
+    renderLoginList();
+    showToast('Login saved');
   } catch (e) { showToast('Error: ' + e.message); }
 }
 function renderEnvList() {
