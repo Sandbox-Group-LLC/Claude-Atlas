@@ -1,7 +1,11 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Menu, screen } = require('electron');
 const path   = require('path');
 // Show as "Atlas" (not generic "Electron") in the menu bar / dock when run in dev.
+// NOTE: setName changes the default userData path (→ .../Application Support/Atlas),
+// which would orphan all existing data. Pin userData to the original 'claude-atlas'
+// dir so settings/history/projects/conversations/usage keep working.
 app.setName('Atlas');
+app.setPath('userData', path.join(app.getPath('appData'), 'claude-atlas'));
 const https  = require('https');
 const fs     = require('fs');
 const http   = require('http');
