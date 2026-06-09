@@ -1,5 +1,7 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, Menu, screen } = require('electron');
 const path   = require('path');
+// Show as "Atlas" (not generic "Electron") in the menu bar / dock when run in dev.
+app.setName('Atlas');
 const https  = require('https');
 const fs     = require('fs');
 const http   = require('http');
@@ -1572,6 +1574,8 @@ function checkMoveToApplications() {
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  // Dev dock icon (otherwise it shows Electron's default atom icon).
+  if (process.platform === 'darwin' && app.dock) { try { app.dock.setIcon(path.join(__dirname, 'assets', 'icon.png')); } catch {} }
   checkMoveToApplications();
   startBridge();
   const ses = session.fromPartition('persist:atlas');
