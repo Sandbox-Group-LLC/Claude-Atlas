@@ -976,6 +976,14 @@ ipcMain.handle('reload',     () => tabs.has(activeTabId) && tabs.get(activeTabId
 ipcMain.handle('new-tab',       (_, url) => createTab(url || 'https://google.com'));
 ipcMain.handle('close-tab',     (_, id)  => closeTab(id));
 ipcMain.handle('activate-tab',  (_, id)  => setActiveTab(id));
+// Reorder: rebuild the tabs Map in the renderer's new visual order so it persists
+// (the saved-tabs order on quit follows Map insertion order).
+ipcMain.handle('reorder-tabs',  (_, ids) => {
+  const reordered = new Map();
+  (ids || []).forEach(id => { if (tabs.has(id)) reordered.set(id, tabs.get(id)); });
+  tabs.forEach((v, k) => { if (!reordered.has(k)) reordered.set(k, v); }); // keep any not listed
+  tabs = reordered;
+});
 ipcMain.handle('toggle-studio', () => { studioOpen = !studioOpen; if (tabs.has(activeTabId)) tabs.get(activeTabId).view.setBounds(getTabBounds()); return studioOpen; });
 
 // System stats for KPI bar

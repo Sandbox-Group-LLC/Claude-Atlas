@@ -35,6 +35,7 @@ svg.lucide { display:block; stroke-width:1.75; }
 .tab { -webkit-app-region:no-drag; display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:7px; cursor:pointer; transition:background .12s; min-width:0; max-width:200px; flex:0 1 auto; height:26px; box-sizing:border-box; }
 .tab:hover { background:var(--surface); }
 .tab.active { background:var(--active); }
+.tab.dragging { opacity:.45; }
 .tab-fav { width:15px; height:15px; min-width:15px; border-radius:3px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
 .tab-fav img { width:100%; height:100%; object-fit:contain; }
 .tab-fav svg.lucide { width:13px; height:13px; color:var(--dim); }
@@ -798,6 +799,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.atlas.onToggleDownloads(()  => dlsOpen ? hideDls() : showDls());
   window.atlas.onChatEvent(handleChatEvent);
   window.atlas.getUsageTotals().then(updateCostKpi).catch(() => {});
+  initTabDrag();
 
   // Atlas text actions from right-click context menu
   window.atlas.onHistoryInit(items => { items.forEach(h => tabHistory.set(h.url, h)); });
@@ -913,7 +915,10 @@ function addTab(d) {
   const el = document.createElement('div');
   el.className = 'tab'; el.id = `t${d.id}`;
   el.title = d.title || d.url || 'New Tab';
+  el.draggable = true;
   el.onclick = e => { if (!e.target.closest('.tab-x')) window.atlas.activateTab(d.id); };
+  el.addEventListener('dragstart', e => { e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); });
+  el.addEventListener('dragend',   () => { el.classList.remove('dragging'); persistTabOrder(); });
   el.innerHTML = `<div class="tab-fav" id="fav${d.id}"><i data-lucide="globe"></i></div>
     <div class="tab-title" id="ttl${d.id}">${esc(d.title||'New Tab')}</div>
     <div class="tab-x" onclick="window.atlas.closeTab(${d.id})"><i data-lucide="x"></i></div>`;
@@ -942,6 +947,33 @@ function activateTab(d) {
   if (findOpen) closeFind();
 }
 function removeTab(d) { document.getElementById(`t${d.id}`)?.remove(); }
+
+// Drag-to-reorder within the tab strip.
+function tabAfterPoint(container, x) {
+  const els = [...container.querySelectorAll('.tab:not(.dragging)')];
+  let best = null, bestOffset = -Infinity;
+  for (const child of els) {
+    const box = child.getBoundingClientRect();
+    const offset = x - (box.left + box.width / 2);
+    if (offset < 0 && offset > bestOffset) { bestOffset = offset; best = child; }
+  }
+  return best; // element to insert before, or null = append at end
+}
+function initTabDrag() {
+  const container = document.getElementById('tabs');
+  container.addEventListener('dragover', e => {
+    e.preventDefault();
+    const dragging = container.querySelector('.tab.dragging');
+    if (!dragging) return;
+    const after = tabAfterPoint(container, e.clientX);
+    if (after == null) container.appendChild(dragging);
+    else container.insertBefore(dragging, after);
+  });
+}
+function persistTabOrder() {
+  const ids = [...document.querySelectorAll('#tabs .tab')].map(el => parseInt(el.id.slice(1), 10));
+  window.atlas.reorderTabs(ids);
+}
 
 // ── KPI Bar ────────────────────────────────────────────────────────────────
 function initKpiBar() {

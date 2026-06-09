@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('atlas', {
   newTab:       (url)            => ipcRenderer.invoke('new-tab', url),
   closeTab:     (id)             => ipcRenderer.invoke('close-tab', id),
   activateTab:  (id)             => ipcRenderer.invoke('activate-tab', id),
+  reorderTabs:  (ids)            => ipcRenderer.invoke('reorder-tabs', ids),
   toggleStudio: ()               => ipcRenderer.invoke('toggle-studio'),
 
   chat:         (msgs, key, pid) => ipcRenderer.invoke('chat',       { messages: msgs, apiKey: key, projectId: pid }),
