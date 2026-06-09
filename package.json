@@ -20,6 +20,7 @@
   "build": {
     "appId": "com.atlas.browser",
     "productName": "Atlas",
+    "npmRebuild": false,
     "protocols": [
       { "name": "Web link", "schemes": ["http", "https"], "role": "Viewer" }
     ],
