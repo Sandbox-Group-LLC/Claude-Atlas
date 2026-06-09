@@ -712,6 +712,12 @@ svg.lucide { display:block; stroke-width:1.75; }
               </div>
               <div style="font-size:11px; color:var(--dim);">Chat pauses for confirmation when a turn or the day's total crosses these. Blank = default · 0 = no cap.</div>
             </div>
+            <div class="s-section">
+              <div class="s-label">Default Browser</div>
+              <button class="s-add-btn" id="default-browser-btn" onclick="setDefaultBrowser()"><i data-lucide="globe"></i> Set Atlas as default browser</button>
+              <div id="default-browser-status" style="font-size:11px; color:var(--dim);"></div>
+            </div>
+
             <div class="s-section" style="padding-top:4px;">
               <button class="tool-btn primary" onclick="saveAllSettings()" style="width:100%;">Save Settings</button>
             </div>
@@ -1529,6 +1535,7 @@ function renderSettings() {
   renderEnvList();
   renderCardList();
   renderLoginList();
+  refreshDefaultBrowserStatus();
 }
 
 // ── Saved Cards ──
@@ -1619,6 +1626,27 @@ async function saveNewCard() {
     closeCardModal();
     renderCardList();
     showToast('Card saved');
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+// ── Default browser ──
+async function refreshDefaultBrowserStatus() {
+  const el = document.getElementById('default-browser-status');
+  if (!el) return;
+  try {
+    const isDef = await window.atlas.isDefaultBrowser();
+    el.textContent = isDef
+      ? '✓ Atlas is your default browser'
+      : 'Not the default yet. (Click from the installed Atlas in /Applications — the dev build can\'t be set.)';
+    el.style.color = isDef ? '#9ece6a' : 'var(--dim)';
+  } catch {}
+}
+async function setDefaultBrowser() {
+  try {
+    const r = await window.atlas.setDefaultBrowser();
+    if (!r || r.ok === false) { showToast(r?.error || 'Could not set default browser'); return; }
+    showToast(r.isDefault ? 'Atlas is now your default browser 🎉' : 'Requested — confirm the macOS prompt if it appears');
+    setTimeout(refreshDefaultBrowserStatus, 800);
   } catch (e) { showToast('Error: ' + e.message); }
 }
 

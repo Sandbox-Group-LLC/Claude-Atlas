@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('atlas', {
   vaultDeleteLogin: (id)          => ipcRenderer.invoke('vault-delete-login', { id }),
   vaultImportCsv:   (csv)         => ipcRenderer.invoke('vault-import-csv', { csv }),
 
+  // Default browser
+  isDefaultBrowser:  ()           => ipcRenderer.invoke('is-default-browser'),
+  setDefaultBrowser: ()           => ipcRenderer.invoke('set-default-browser'),
+
   getDownloads:   ()             => ipcRenderer.invoke('get-downloads'),
   openDownload:   (p)            => ipcRenderer.invoke('open-download', p),
   showInFolder:   (p)            => ipcRenderer.invoke('show-in-folder', p),

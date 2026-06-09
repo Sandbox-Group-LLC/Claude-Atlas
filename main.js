@@ -1151,6 +1151,26 @@ ipcMain.handle('vault-import-csv', (_, { csv }) => {
   return { added, skipped, total: s.savedLogins.length };
 });
 
+// ─── Default browser ───────────────────────────────────────────────────────────
+ipcMain.handle('is-default-browser', () => {
+  try { return app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https'); }
+  catch { return false; }
+});
+ipcMain.handle('set-default-browser', () => {
+  // setAsDefaultProtocolClient registers the CURRENTLY running bundle. In dev that's
+  // node_modules/electron (Electron.app), which would wrongly register Electron as the
+  // browser. Only allow it from the packaged /Applications/Atlas.app.
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Open the installed Atlas (in /Applications) and click this there — the dev build (npm start) runs as Electron and can\'t be set as default.' };
+  }
+  let ok = true;
+  try {
+    ok = app.setAsDefaultProtocolClient('http') && ok;
+    ok = app.setAsDefaultProtocolClient('https') && ok;
+  } catch (e) { return { ok: false, error: e.message }; }
+  return { ok, isDefault: app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https') };
+});
+
 // Downloads
 ipcMain.handle('get-downloads',   ()     => [...downloads.values()]);
 ipcMain.handle('open-download',   (_, p) => shell.openPath(p));

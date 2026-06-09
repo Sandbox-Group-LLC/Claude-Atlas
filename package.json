@@ -7,7 +7,7 @@
     "start": "./node_modules/.bin/electron .",
     "build": "./node_modules/.bin/electron-builder --mac --dir",
     "dist": "./node_modules/.bin/electron-builder --mac && rm -rf dist/mac-arm64",
-    "repackage": "npm run build && codesign --force --deep --sign - dist/mac-arm64/Atlas.app && rm -rf '/Applications/Atlas.app' && cp -R dist/mac-arm64/Atlas.app '/Applications/Atlas.app' && /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f '/Applications/Atlas.app' && echo '✓ repackaged + installed to /Applications'"
+    "repackage": "npm run build && codesign --force --deep --sign - dist/mac-arm64/Atlas.app && rm -rf '/Applications/Atlas.app' && cp -R dist/mac-arm64/Atlas.app '/Applications/Atlas.app' && /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f -R '/Applications/Atlas.app' && echo '✓ repackaged + installed to /Applications'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
