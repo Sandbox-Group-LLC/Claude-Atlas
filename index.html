@@ -897,10 +897,14 @@ function urlKey(e) {
 }
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
-// Sync the URL bar from a tab update — but never while the user is typing in it.
+// Sync the URL bar from a tab update — but never while the user is actively
+// typing in it. The input is only "being typed in" when the chrome document has
+// focus AND it's the active element; once focus moves to the page view,
+// document.hasFocus() is false, so navigations update the bar normally.
 function syncUrlBar(url) {
   const inp = document.getElementById('url');
-  if (document.activeElement !== inp) inp.value = url;
+  const typing = document.hasFocus() && document.activeElement === inp;
+  if (!typing) inp.value = url;
 }
 function setTabFavicon(id, src) {
   const fav = document.getElementById(`fav${id}`);
